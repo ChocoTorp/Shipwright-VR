@@ -29,7 +29,6 @@ FaultClient sGraphFaultClient;
 CfbInfo sGraphCfbInfos[3];
 FaultClient sGraphUcodeFaultClient;
 
-void Skybox_Setup(PlayState* play, SkyboxContext* skyboxCtx, s16 skyboxId);
 void PadMgr_ThreadEntry(PadMgr* padMgr);
 
 // clang-format off
@@ -472,7 +471,6 @@ extern void ProcessSaveStateRequests(void);
 static void RunFrame() {
     u32 size;
     char faultMsg[0x50];
-    static bool hasSetupSkybox = false;
 
     switch (runFrameContext.state) {
         case 0:
@@ -502,14 +500,6 @@ static void RunFrame() {
             Fault_AddHungupAndCrashImpl("GAME CLASS MALLOC FAILED", faultMsg);
         }
         GameState_Init(gGameState, runFrameContext.ovl->init, &runFrameContext.gfxCtx);
-
-        // Setup the normal skybox once before entering any game states to avoid the 0xabababab crash.
-        // The crash is due to certain skyboxes not loading all the data they need from Skybox_Setup.
-        if (!hasSetupSkybox) {
-            PlayState* play = (PlayState*)gGameState;
-            Skybox_Setup(play, &play->skyboxCtx, SKYBOX_NORMAL_SKY);
-            hasSetupSkybox = true;
-        }
 
         uint64_t freq = GetFrequency();
 
