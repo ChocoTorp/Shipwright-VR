@@ -2729,10 +2729,16 @@ void SaveManager::ConvertFromUnversioned() {
 #define SLOT_SIZE (sizeof(SaveContext_v0) + 0x28)
 #define SLOT_OFFSET(index) (SRAM_HEADER_SIZE + 0x10 + (index * SLOT_SIZE))
 
-    std::ifstream input("oot_save.sav", std::ios::binary);
+    std::ifstream input(Ship::Context::GetPathRelativeToAppDirectory("oot_save.sav"), std::ios::binary);
 
     std::vector<char> data(std::istreambuf_iterator<char>(input), {});
     input.close();
+
+    // Couldn't read the file, or it's too short to hold all three slots
+    if (data.size() < SLOT_OFFSET(3)) {
+        CreateDefaultGlobal();
+        return;
+    }
 
     for (size_t i = 0; i < ARRAY_COUNT(sZeldaMagic) - 3; i++) {
         if (sZeldaMagic[i + SRAM_HEADER_MAGIC] != data[i + SRAM_HEADER_MAGIC]) {
