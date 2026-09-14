@@ -23,6 +23,10 @@ typedef struct EnArrow {
     /* 0x024C */ Actor* hitActor;
     /* 0x0250 */ Vec3f unk_250;
     /* 0x025C */ EnArrowActionFunc actionFunc;
+    // SOH [VR] Resource commitment and launch data travel with the actor, including savestates.
+    s16 vrDeferredMagicCost;
+    u8 vrPhysicalThrow;
+    Vec3f vrLaunchVelocity;
 } EnArrow; // size = 0x0260
 
 typedef enum {

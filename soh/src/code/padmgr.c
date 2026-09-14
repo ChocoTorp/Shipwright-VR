@@ -424,6 +424,8 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                     if (VrItemSelect_ConsumesInput(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrItemSelect_TriggerConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrItemSelect_SwapConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
+                        VrItemThrow_GripConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
+                        VrArchery_PinchConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrCombat_AimTriggerConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx])) {
                         continue;
                     }
@@ -451,6 +453,11 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                     vrPad->button |= VrItemSelect_TriggerItemMask(vrHandIdx);
                 }
             }
+
+            // SOH [VR] Physical archery: a pinched nock IS the weapon's item button, held
+            // down for as long as the string hand keeps the pinch — the same raw-state mirror
+            // as the trigger above, so nock/draw/release all come out of the vanilla pad path.
+            vrPad->button |= VrArchery_ItemButtonMask();
 
             // SOH [VR] Ocarina stick-direction bindings (sVrBindOcaStickCvars above): fire the
             // bound mask while the dominant axis holds past the threshold — raw button STATE,

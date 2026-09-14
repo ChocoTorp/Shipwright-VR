@@ -1931,7 +1931,18 @@ static void Player_VrAimHeldProjectile(Player* this, Actor* heldActor) {
     s32 vrWeaponHand = CVarGetInteger("gVrLeftHanded", 0) ? VR_HAND_RIGHT : VR_HAND_LEFT;
     float vrRayPos[3];
     float vrRayDir[3];
-    if (!VR_GetAimRay(vrWeaponHand, vrRayPos, vrRayDir)) {
+    // SOH [VR] Physical archery: while a nock is pinched, the shot aims along the string-hand
+    // -> bow-hand line — real two-hand archery — instead of the bow hand's pointing ray. Same
+    // override mechanism either way; the flight code still reads world.rot verbatim at release.
+    float vrArcherySeg[6];
+    if (VrArchery_AimSegment(vrArcherySeg)) {
+        vrRayPos[0] = vrArcherySeg[0];
+        vrRayPos[1] = vrArcherySeg[1];
+        vrRayPos[2] = vrArcherySeg[2];
+        vrRayDir[0] = vrArcherySeg[3];
+        vrRayDir[1] = vrArcherySeg[4];
+        vrRayDir[2] = vrArcherySeg[5];
+    } else if (!VR_GetAimRay(vrWeaponHand, vrRayPos, vrRayDir)) {
         return;
     }
     Vec3f vrOrigin = { vrRayPos[0], vrRayPos[1], vrRayPos[2] };
@@ -1965,7 +1976,14 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             if (this->actor.scale.y >= 0.0f) {
                 D_80126080.x = this->unk_85C * 5000.0f;
                 func_80090A28(this, sp124);
-                if (this->meleeWeaponState != 0) {
+                if (VrCombat_Active() && VrCombat_MeleeCovered(this)) {
+                    // SOH [VR] Covered stick: the physical path owns the trail and damage quads
+                    // (FeedMelee), so the vanilla registration must not double them — but the
+                    // weapon-info tip stays live (torches and friends read it outside attacks).
+                    Math_Vec3f_Copy(&this->meleeWeaponInfo[0].tip, &sp124[0]);
+                    EffectBlure_ChangeType(Effect_GetByIndex(this->meleeWeaponEffectIndex), TRAIL_TYPE_STICK);
+                    VrCombat_FeedMelee(play, this);
+                } else if (this->meleeWeaponState != 0) {
                     EffectBlure_ChangeType(Effect_GetByIndex(this->meleeWeaponEffectIndex), TRAIL_TYPE_STICK);
                     func_800906D4(play, this, sp124);
                 } else {
@@ -2088,10 +2106,66 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
                 this->unk_85C = -0.5f;
             }
 
-            Matrix_Scale(1.0f, this->unk_858, 1.0f, MTXMODE_APPLY);
+            {
+                // SOH [VR] Physical archery: the string renders pulled to the string hand —
+                // direction AND stretch follow it, so the string lines up with wherever you
+                // pull it (D_80160000 is the string-hand limb, which motion hands drives with
+                // the controller). Rotation carries the DL's +Y pull axis onto the local hand
+                // direction; the Y scale lands the pull apex on the hand (apex model length
+                // tunable via gVrArcheryStringApex).
+                s32 vrStringDone = false;
+                float vrStrPos[3];
+                float vrStrRot[4];
+                // The pulling hand is the STRING-hand controller, fetched directly —
+                // D_80160000 here is this R_HAND limb's own position (updated per limb at
+                // function entry), which is why an earlier version always stretched "up".
+                if (VrArchery_StringNocked() &&
+                    VR_GetHandPose(CVarGetInteger("gVrLeftHanded", 0) ? VR_HAND_LEFT : VR_HAND_RIGHT, vrStrPos,
+                                   vrStrRot)) {
+                    MtxF vrCur;
+                    MtxF vrInv;
+                    Vec3f vrLocal;
+                    Vec3f vrHandWorld;
+                    vrHandWorld.x = vrStrPos[0];
+                    vrHandWorld.y = vrStrPos[1];
+                    vrHandWorld.z = vrStrPos[2];
+                    Matrix_Get(&vrCur);
+                    SkinMatrix_Invert(&vrCur, &vrInv);
+                    SkinMatrix_Vec3fMtxFMultXYZ(&vrInv, &vrHandWorld, &vrLocal);
+                    f32 vrLen = sqrtf(SQ(vrLocal.x) + SQ(vrLocal.y) + SQ(vrLocal.z));
+                    if (vrLen > 1.0f) {
+                        // The string DL's pull apex is authored along local -Y (headset
+                        // testing: unnegated, the string mirrored the pull), so carry -Y
+                        // onto the hand direction — i.e. rotate +Y onto the NEGATED one.
+                        vrLocal.x = -vrLocal.x;
+                        vrLocal.y = -vrLocal.y;
+                        vrLocal.z = -vrLocal.z;
+                        Vec3f vrAxis = { vrLocal.z, 0.0f, -vrLocal.x }; // cross(+Y, pullDir)
+                        f32 vrAxisLen = sqrtf(SQ(vrAxis.x) + SQ(vrAxis.z));
+                        f32 vrCos = vrLocal.y / vrLen;
+                        f32 vrScale = vrLen / CVarGetFloat("gVrArcheryStringApex", 1500.0f);
+                        if (vrAxisLen > 1e-3f) {
+                            vrAxis.x /= vrAxisLen;
+                            vrAxis.z /= vrAxisLen;
+                            Matrix_RotateAxis(acosf(CLAMP(vrCos, -1.0f, 1.0f)), &vrAxis, MTXMODE_APPLY);
+                        }
+                        if (vrScale > 1.6f) {
+                            vrScale = 1.6f;
+                        }
+                        Matrix_Scale(1.0f, vrScale, 1.0f, MTXMODE_APPLY);
+                        // Keep the vanilla pull scalar coherent for anything else that reads it.
+                        this->unk_858 = vrScale > 1.0f ? 1.0f : vrScale;
+                        this->unk_85C = -0.5f;
+                        vrStringDone = true;
+                    }
+                }
+                if (!vrStringDone) {
+                    Matrix_Scale(1.0f, this->unk_858, 1.0f, MTXMODE_APPLY);
 
-            if (!LINK_IS_ADULT) {
-                Matrix_RotateZ(this->unk_858 * -0.2f, MTXMODE_APPLY);
+                    if (!LINK_IS_ADULT) {
+                        Matrix_RotateZ(this->unk_858 * -0.2f, MTXMODE_APPLY);
+                    }
+                }
             }
 
             {
@@ -2166,6 +2240,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 
                 if (this->unk_862 == 0) {
                     Math_Vec3f_Copy(&heldActor->world.pos, &sGetItemRefPos);
+                    // SOH [VR] Physical carry uses one controller, not the midpoint of
+                    // Link's animation-driven hands. Keep this after vanilla placement.
+                    VrItemThrow_UpdateCarryPose(this);
                 }
             }
         }

@@ -1,4 +1,5 @@
 #include "SohMenu.h"
+#include "SohGui.hpp"
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <imgui.h>
 #include <cmath>
@@ -464,6 +465,9 @@ void SohMenu::AddMenuVRSettings() {
 
     AddWidget(generalPath, "VR Mode (F9)", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrEnabled")
+        // Turning VR on while the OpenGL renderer is running raises the swap-to-DX11 popup
+        // (VR is D3D11-only); no-op when disabling or already on DX11.
+        .Callback([](WidgetInfo& info) { SohGui::PromptVrDx11SwapIfNeeded(); })
         .Options(CheckboxOptions()
                      .DefaultValue(true)
                      .Tooltip("Switch between VR and regular flat-screen play at any time - F9 does "
@@ -824,6 +828,26 @@ void SohMenu::AddMenuVRSettings() {
                      .Tooltip("Blade collider length for the Biggoron Sword / Giant's Knife (game "
                               "units). Default matches the visible blade. Swings one-handed for "
                               "now; real two-handed weight comes in a later update."));
+    AddWidget(physPath, "Deku Stick Length: %.0f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrPhysBladeLenStick")
+        .Options(FloatSliderOptions()
+                     .Min(20.0f)
+                     .Max(80.0f)
+                     .DefaultValue(50.0f)
+                     .Step(1.0f)
+                     .Format("%.0f")
+                     .Tooltip("Collider length for the Deku stick (game units). Default matches "
+                              "the visible stick; the collider follows the shorter broken stub "
+                              "automatically. Like the swords, it swings physically and snaps on "
+                              "a real landed hit."));
+    AddWidget(physPath, "Deku Stick World Collision", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrPhysStickCollision")
+        .Options(CheckboxOptions()
+                     .DefaultValue(true)
+                     .Tooltip("The stick collides with walls and objects like the swords do (and "
+                              "snaps when whacked into them at attack speed). Disable to swing it "
+                              "through the world like the base game - it still damages enemies "
+                              "and still breaks on landed hits."));
     AddWidget(physPath, "Blade Width: %.0f", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gVrPhysBladeWidth")
         .Options(FloatSliderOptions()
@@ -1515,6 +1539,102 @@ void SohMenu::AddMenuVRSettings() {
                               "Z-target and the rest moved onto the grips and face buttons. "
                               "Turning it off restores the classic scheme and its bindings "
                               "exactly as you left them."));
+    // Dev Test Items: the sandbox for in-development physical-item work (bombs/nuts, archery,
+    // and whatever item lands next). Calibration lives here, deliberately separate from the
+    // stable input settings, so the mess stays contained while items are being tuned.
+    AddSidebarEntry("VR Settings", "Dev Test Items", 1);
+    WidgetPath devPath = { "VR Settings", "Dev Test Items", SECTION_COLUMN_1 };
+    AddWidget(devPath, "Bombs & Nuts", WIDGET_SEPARATOR_TEXT);
+    AddWidget(devPath, "Physical Bomb and Nut Throws", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrPhysicalItemThrows")
+        .Options(CheckboxOptions()
+                     .DefaultValue(true)
+                     .Tooltip("Selecting a bomb or nut shows a preview in front of you. Reach toward it "
+                              "with your sword hand and squeeze grip to grab; release grip to throw. "
+                              "Switching equipment drops the held item without a throw impulse. "
+                              "Disable for button-operated use after selection."));
+    AddWidget(devPath, "Slingshot & Bow", WIDGET_SEPARATOR_TEXT);
+    AddWidget(devPath, "Physical Archery", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrPhysArchery")
+        .Options(CheckboxOptions()
+                     .DefaultValue(true)
+                     .Tooltip("Real two-hand archery for the slingshot and bow: bring your free "
+                              "hand to the weapon and squeeze its trigger to nock, pull back to "
+                              "draw, release to fire along the line between your hands. Releasing "
+                              "with almost no draw cancels the shot and keeps the ammo. Disable "
+                              "for the classic scheme (weapon-hand trigger draws and fires). "
+                              "Shooting galleries and horseback keep their own controls."));
+    AddWidget(devPath, "Archery Nock Reach: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrArcheryNockRadius")
+        .Options(FloatSliderOptions()
+                     .Min(5.0f)
+                     .Max(40.0f)
+                     .DefaultValue(20.0f)
+                     .Step(1.0f)
+                     .Format("%.0f")
+                     .Tooltip("How close the string hand must be to the weapon hand to nock."));
+    AddWidget(devPath, "Nock Point Right: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrArcheryAnchorRight")
+        .Options(FloatSliderOptions()
+                     .Min(-40.0f)
+                     .Max(40.0f)
+                     .DefaultValue(4.0f)
+                     .Step(0.5f)
+                     .Format("%.1f")
+                     .Tooltip("Moves the nock point (the marker you pinch) sideways in the weapon "
+                              "hand's own frame, so it can sit on the visible string instead of "
+                              "the controller. Mirrored automatically for left-handed mode."));
+    AddWidget(devPath, "Nock Point Up: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrArcheryAnchorUp")
+        .Options(FloatSliderOptions()
+                     .Min(-40.0f)
+                     .Max(40.0f)
+                     .DefaultValue(-5.0f)
+                     .Step(0.5f)
+                     .Format("%.1f")
+                     .Tooltip("Moves the nock point along the weapon hand's up axis."));
+    AddWidget(devPath, "Nock Point Forward: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrArcheryAnchorFwd")
+        .Options(FloatSliderOptions()
+                     .Min(-40.0f)
+                     .Max(40.0f)
+                     .DefaultValue(17.0f)
+                     .Step(0.5f)
+                     .Format("%.1f")
+                     .Tooltip("Moves the nock point along the weapon hand's pointing direction "
+                              "(negative = toward you, where a slingshot pouch usually sits)."));
+    AddWidget(devPath, "Archery Minimum Draw: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrArcheryMinDraw")
+        .Options(FloatSliderOptions()
+                     .Min(2.0f)
+                     .Max(30.0f)
+                     .DefaultValue(10.0f)
+                     .Step(1.0f)
+                     .Format("%.0f")
+                     .Tooltip("Releasing the string with less draw than this cancels instead of "
+                              "firing - no ammo or magic is spent."));
+    AddWidget(devPath, "Nock Icon Size: %.0f%%", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrArcheryIconScale")
+        .Options(FloatSliderOptions()
+                     .Min(3.0f)
+                     .Max(100.0f)
+                     .DefaultValue(25.0f)
+                     .Step(1.0f)
+                     .Format("%.0f")
+                     .Tooltip("Size of the Deku Nut nock-point icon, as a percent of a normal "
+                              "nut drop. Make it as tiny as you like; it still grows slightly "
+                              "when your string hand is in pinch reach."));
+    AddWidget(devPath, "String Pull Visual Scale: %.0f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrArcheryStringApex")
+        .Options(FloatSliderOptions()
+                     .Min(200.0f)
+                     .Max(5000.0f)
+                     .DefaultValue(1500.0f)
+                     .Step(25.0f)
+                     .Format("%.0f")
+                     .Tooltip("Calibrates how far the string visual stretches to reach your "
+                              "pulling hand (model units at full scale). If the drawn string "
+                              "overshoots your hand, raise this; if it falls short, lower it."));
     AddWidget(buttonsPath, "Selector Hand", WIDGET_CVAR_COMBOBOX)
         .CVar("gVrItemSelHand")
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrItemSelect", 1); })

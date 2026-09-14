@@ -85,6 +85,9 @@ void EnArrow_Init(Actor* thisx, PlayState* play) {
         0x00002000, 0x00010000, 0x00004000, 0x00008000, 0x00000004,
     };
     EnArrow* this = (EnArrow*)thisx;
+    this->vrDeferredMagicCost = 0;
+    this->vrPhysicalThrow = false;
+    this->vrLaunchVelocity = (Vec3f){ 0.0f, 0.0f, 0.0f };
 
     if (CVarGetInteger(CVAR_COSMETIC("Arrows.NormalPrimary.Changed"), 0)) {
         blureNormal.altEnvColor =
@@ -244,6 +247,15 @@ void EnArrow_Shoot(EnArrow* this, PlayState* play) {
         } else {
             Actor_SetProjectileSpeed(&this->actor, 150.0f);
             this->timer = 12;
+        }
+        // SOH [VR] Physical nuts retain vanilla impact/stun logic, but launch from
+        // the released hand velocity instead of the animation's fixed speed.
+        if (this->vrPhysicalThrow) {
+            this->actor.velocity = this->vrLaunchVelocity;
+            this->actor.speedXZ = sqrtf(SQ(this->actor.velocity.x) + SQ(this->actor.velocity.z));
+            this->actor.gravity = -1.0f;
+            this->timer = 40;
+            this->vrPhysicalThrow = false;
         }
     }
 }
@@ -449,7 +461,8 @@ void EnArrow_Update(Actor* thisx, PlayState* play) {
         this->actionFunc(this, play);
     }
 
-    if ((this->actor.params >= ARROW_FIRE) && (this->actor.params <= ARROW_0E)) {
+    if ((this->actor.params >= ARROW_FIRE) && (this->actor.params <= ARROW_0E) &&
+        this->vrDeferredMagicCost == 0) {
         s16 elementalActorIds[] = { ACTOR_ARROW_FIRE, ACTOR_ARROW_ICE,  ACTOR_ARROW_LIGHT,
                                     ACTOR_ARROW_FIRE, ACTOR_ARROW_FIRE, ACTOR_ARROW_FIRE };
 

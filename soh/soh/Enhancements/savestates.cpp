@@ -10,10 +10,12 @@
 #include <soh/OTRAudio.h>
 
 #include "z64.h"
+#include "macros.h"
 #include "z64save.h"
 #include <variables.h>
 #include <functions.h>
 #include "savestate_serialize.h"
+#include "vr-combat/VrCombat.h"
 
 extern "C" PlayState* gPlayState;
 
@@ -473,4 +475,9 @@ void SaveState::Load(void) {
     D_801755D0 = info->D_801755D0_copy;
     LoadOverlayStaticData();
     LoadTransitionActors();
+    // Pending VR input belongs to the live session, never to a restored timeline.
+    VrItemSelect_Reset();
+    if (gPlayState) {
+        Player_VrCancelPreparedItem(gPlayState, GET_PLAYER(gPlayState));
+    }
 }

@@ -78,11 +78,12 @@ ColliderQuadInit sVrQuadInit = {
 };
 
 // Per-weapon [slash, jump-slash] dmgFlags, rows matching vanilla D_80854488 (z_player.c):
-// Master, Kokiri (also broken Giant's Knife), Biggoron.
-constexpr uint32_t kDmgFlags[3][2] = {
+// Master, Kokiri (also broken Giant's Knife), Biggoron, Deku Stick.
+constexpr uint32_t kDmgFlags[4][2] = {
     { 0x00000200, 0x08000000 },
     { 0x00000100, 0x02000000 },
     { 0x00000400, 0x04000000 },
+    { 0x00000002, 0x08000000 },
 };
 
 struct Q4 {
@@ -408,6 +409,10 @@ float BladeLengthModelUnits(Player* player) {
             return CVarGetFloat("gVrPhysBladeLenKokiri", 18.0f) * 100.0f;
         case 3:
             return CVarGetFloat("gVrPhysBladeLenBiggoron", 55.0f) * 100.0f;
+        case 4:
+            // Vanilla stick length is unk_85C * 5000 model units (50 game units whole,
+            // halved once snapped) — the collider follows the broken stub.
+            return CVarGetFloat("gVrPhysBladeLenStick", 50.0f) * 100.0f * player->unk_85C;
         default:
             return 3000.0f;
     }
@@ -995,7 +1000,9 @@ void RegisterQuad(PlayState* play, uint32_t dmgFlags, const Vec3f& newBase, cons
     }
     ColliderQuad* quad = &sQuads[sQuadsUsed++];
     quad->info.toucher.dmgFlags = dmgFlags;
-    quad->info.toucherFlags = TOUCH_ON | TOUCH_NEAREST;
+    // DMG_DEKU_STICK hits sound wooden, mirroring vanilla func_80837918.
+    quad->info.toucherFlags =
+        (dmgFlags == 0x00000002) ? (TOUCH_ON | TOUCH_NEAREST | TOUCH_SFX_WOOD) : (TOUCH_ON | TOUCH_NEAREST);
     // Vanilla vertex order (func_80090480): newBase, newTip, prevBase, prevTip.
     Collider_SetQuadVertices(quad, const_cast<Vec3f*>(&newBase), const_cast<Vec3f*>(&newTip),
                              const_cast<Vec3f*>(&prevBase), const_cast<Vec3f*>(&prevTip));
@@ -1010,8 +1017,10 @@ extern "C" bool VrCombat_MeleeCovered(Player* player) {
     }
     const s32 held = Player_GetMeleeWeaponHeld(player);
     // 1 = Master, 2 = Kokiri, 3 = Biggoron/Giant's Knife (physical now, one-hand feel until the
-    // two-hand milestone gives it real weight), 4 = stick, 5 = hammer (both still vanilla).
-    return (held == 1) || (held == 2) || (held == 3);
+    // two-hand milestone gives it real weight), 4 = Deku stick (physical: swings, wood SFX,
+    // breaks on landed impacts; world collision optional via gVrPhysStickCollision),
+    // 5 = hammer (still vanilla until its two-hand milestone).
+    return (held == 1) || (held == 2) || (held == 3) || (held == 4);
 }
 
 extern "C" bool VrCombat_MeleeQuadsHit(void) {
@@ -1141,7 +1150,10 @@ extern "C" void VrCombat_FeedMelee(PlayState* play, Player* player) {
     }
 
     // ---- 2b. Held-object sim: the virtual blade with inertia + contact ----
-    const bool inertiaOn = CVarGetInteger("gVrPhysBladeInertia", 1) != 0;
+    // The Deku stick's world collision is optional (gVrPhysStickCollision): with it off the
+    // stick swings through walls like vanilla — no sim blade, quads from the raw hand path.
+    const bool inertiaOn = CVarGetInteger("gVrPhysBladeInertia", 1) != 0 &&
+                           !(Player_GetMeleeWeaponHeld(player) == 4 && !CVarGetInteger("gVrPhysStickCollision", 1));
     if (inertiaOn && haveEff) {
         VrHeldObjectDesc desc = {};
         desc.primaryHand = hand;
@@ -1301,7 +1313,7 @@ extern "C" void VrCombat_FeedMelee(PlayState* play, Player* player) {
     if (sTier == TIER_HOT) {
         const s32 held = Player_GetMeleeWeaponHeld(player);
         const int row = Player_HoldsBrokenKnife(player) ? 1 : (int)held - 1;
-        const uint32_t dmgFlags = kDmgFlags[(row < 0 || row > 2) ? 1 : row][sTickTipSpeed >= heavySpeed ? 1 : 0];
+        const uint32_t dmgFlags = kDmgFlags[(row < 0 || row > 3) ? 1 : row][sTickTipSpeed >= heavySpeed ? 1 : 0];
 
         if (bladeN >= 2) {
             // Sweep quads between consecutive sim blade lines (evenly picked, max 5)...
@@ -1454,7 +1466,14 @@ void Swing_OnPlayerUpdate(PlayState* play, Player* player) {
             PendingStrike& st = sPendingStrikes[sPendingStrikeCount++];
             st.pos = pos;
             st.normal = { events[i].normal[0], events[i].normal[1], events[i].normal[2] };
-            st.dmgFlags = kDmgFlags[(row < 0 || row > 2) ? 1 : row][sTickTipSpeed >= heavySpeed ? 1 : 0];
+            st.dmgFlags = kDmgFlags[(row < 0 || row > 3) ? 1 : row][sTickTipSpeed >= heavySpeed ? 1 : 0];
+            // A stick whacked into the world at attack speed snaps exactly like a vanilla
+            // wall hit (func_80842DF4's wall branch -> break). Stick only here: durability
+            // for actor hits is consumed once at the quad readback below, and a wall strike
+            // whose poked-through quad then hits an actor must not consume twice.
+            if (player->heldItemAction == PLAYER_IA_DEKU_STICK) {
+                VrCombat_MeleeImpactConsume(play, player);
+            }
         }
     }
 
@@ -1527,6 +1546,10 @@ void Swing_OnPlayerUpdate(PlayState* play, Player* player) {
         if (sTier == TIER_HOT) {
             sTier = TIER_ARMED; // one strike per swing: re-cross the hit speed to strike again
         }
+        // Landed hits consume weapon durability exactly like vanilla func_80842DF4's AT_HIT
+        // branch: the Deku stick snaps (half-stick effect, ammo, put away) and the unbroken
+        // Giant's Knife wears toward breaking. No-op for the other covered weapons.
+        VrCombat_MeleeImpactConsume(play, player);
     }
     for (int i = 0; i < sQuadsUsed; i++) {
         Collider_ResetQuadAT(play, &sQuads[i].base);

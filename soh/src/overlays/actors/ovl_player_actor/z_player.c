@@ -2690,6 +2690,21 @@ void Player_StartChangingHeldItem(Player* this, PlayState* play) {
 }
 
 void Player_UpdateItems(Player* this, PlayState* play) {
+    // SOH [VR] Selection is an explicit request, not an item-button press. Resolve it
+    // before the upper action can interpret a release as firing the old item.
+    if (VrItemSelect_ModeActive() && this->actor.category == ACTORCAT_PLAYER &&
+        VrItemSelect_PendingSlot() != -2) {
+        const int32_t result = Player_VrSelectItem(play, this, VrItemSelect_PendingSlot());
+        if (result == 1) {
+            VrItemSelect_FinishRequest();
+            return;
+        } else if (result == 2) {
+            // A same-item selection or invalid slot must not synthesize a bow release.
+            VrItemSelect_CancelRequest();
+        }
+    }
+    // SOH [VR] Grip preparation/release is separate from item-button activation.
+    VrItemThrow_Tick(play, this);
     if ((this->actor.category == ACTORCAT_PLAYER) &&
         (CVarGetInteger(CVAR_ENHANCEMENT("QuickPutaway"), 0) ||
          !(this->stateFlags1 & PLAYER_STATE1_START_CHANGING_HELD_ITEM)) &&
@@ -2737,6 +2752,7 @@ s32 func_8083442C(Player* this, PlayState* play) {
     s32 item;
     s32 arrowType;
     s32 magicArrowType;
+    s16 vrDeferredMagicCost = 0;
 
     if ((this->heldItemAction >= PLAYER_IA_BOW_FIRE) && (this->heldItemAction <= PLAYER_IA_BOW_0E) &&
         (gSaveContext.magicState != MAGIC_STATE_IDLE)) {
@@ -2757,7 +2773,15 @@ s32 func_8083442C(Player* this, PlayState* play) {
                     if ((magicArrowType >= 0) && (magicArrowType <= 2)) {
                         if (GameInteractor_Should(VB_PLAYER_ARROW_MAGIC_CONSUMPTION, true, this, magicArrowType,
                                                   &arrowType)) {
-                            if (!Magic_RequestChange(play, sMagicArrowCosts[magicArrowType], MAGIC_CONSUME_NOW)) {
+                            if (VrItemSelect_ModeActive() && play->shootingGalleryStatus == 0 &&
+                                !(this->stateFlags1 & PLAYER_STATE1_ON_HORSE)) {
+                                if (gSaveContext.isMagicAcquired &&
+                                    gSaveContext.magic >= sMagicArrowCosts[magicArrowType]) {
+                                    vrDeferredMagicCost = sMagicArrowCosts[magicArrowType];
+                                } else {
+                                    arrowType = ARROW_NORMAL;
+                                }
+                            } else if (!Magic_RequestChange(play, sMagicArrowCosts[magicArrowType], MAGIC_CONSUME_NOW)) {
                                 arrowType = ARROW_NORMAL;
                             }
                         }
@@ -2766,6 +2790,9 @@ s32 func_8083442C(Player* this, PlayState* play) {
                     this->heldActor = Actor_SpawnAsChild(
                         &play->actorCtx, &this->actor, play, ACTOR_EN_ARROW, this->actor.world.pos.x,
                         this->actor.world.pos.y, this->actor.world.pos.z, 0, this->actor.shape.rot.y, 0, arrowType);
+                    if (this->heldActor != NULL) {
+                        ((EnArrow*)this->heldActor)->vrDeferredMagicCost = vrDeferredMagicCost;
+                    }
                 }
             }
         }
@@ -3084,6 +3111,17 @@ s32 func_808350A4(PlayState* play, Player* this) {
 
     if (this->heldActor != NULL) {
         if (!Player_HoldsHookshot(this)) {
+            // SOH [VR] Commit elemental magic at release. If it became unavailable
+            // during the draw, cancel without spending an arrow or granting a free spell.
+            EnArrow* arrow = (EnArrow*)this->heldActor;
+            if (arrow->vrDeferredMagicCost != 0) {
+                if (!Magic_RequestChange(play, arrow->vrDeferredMagicCost, MAGIC_CONSUME_NOW)) {
+                    Actor_Kill(this->heldActor);
+                    this->heldActor = this->actor.child = NULL;
+                    return 0;
+                }
+                arrow->vrDeferredMagicCost = 0;
+            }
             func_80834380(play, this, &item, &arrowType);
 
             if (gSaveContext.minigameState == 1) {
@@ -3624,6 +3662,236 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
             }
         }
     }
+}
+
+// SOH [VR] Passive equipment transition. Immediate-use items deliberately bypass
+// Player_UseItem; explosives deliberately bypass their actor-spawning initializer.
+// A false result leaves the latest request pending until vanilla releases the action.
+int32_t Player_VrSelectItem(PlayState* play, Player* this, int32_t slot) {
+    s32 item;
+    s8 itemAction;
+    Actor* held;
+    bool explosive;
+
+    if (!VrItemSelect_SelectionAllowed() || this->actor.category != ACTORCAT_PLAYER ||
+        slot < -1 || slot > 3 || gSaveContext.health == 0 || this->csAction != 0 ||
+        play->shootingGalleryStatus != 0 || play->bombchuBowlingStatus != 0 ||
+        play->activeCamera != CAM_ID_MAIN || gSaveContext.minigameState == 1 ||
+        play->pauseCtx.state != 0 || this->unk_6AD != 0 ||
+        (this->stateFlags1 & (PLAYER_STATE1_START_CHANGING_HELD_ITEM | PLAYER_STATE1_IN_WATER |
+                             PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_DEAD | PLAYER_STATE1_CLIMBING_LADDER |
+                             PLAYER_STATE1_CLIMBING_LEDGE | PLAYER_STATE1_HANGING_OFF_LEDGE)) ||
+        (this->stateFlags3 & PLAYER_STATE3_FLYING_WITH_HOOKSHOT) || this->actor.parent != NULL ||
+        this->heldItemAction != this->itemAction ||
+        this->upperActionFunc == Player_UpperAction_ChangeHeldItem) {
+        return false;
+    }
+
+    item = slot < 0 ? ITEM_NONE : Player_GetItemOnButton(play, slot);
+    // Disabled/empty buttons must not become a way around vanilla restrictions.
+    if (slot >= 0 && (item >= ITEM_NONE_FE || item != VrItemSelect_PendingItem())) {
+        return 2;
+    }
+    itemAction = Player_ItemToItemAction(item);
+    if (itemAction < PLAYER_IA_NONE || itemAction >= PLAYER_IA_MAX) {
+        return 2;
+    }
+    // A stick in hand IS a stick from the inventory (physical swings need no use step), so
+    // the vanilla "can't take one out with none left" gate moves up to selection.
+    if (itemAction == PLAYER_IA_DEKU_STICK && AMMO(ITEM_STICK) == 0) {
+        return 2;
+    }
+    if (this->heldItemAction == itemAction) {
+        return 2;
+    }
+    if (Player_HoldsHookshot(this) && this->heldActor == NULL) {
+        return false; // extending, returning, or pulling: never destroy the traversal actor
+    }
+    if (this->upperActionFunc == func_808359FC) {
+        return false; // the boomerang release animation is committed; finish spawning it
+    }
+
+    held = this->heldActor;
+    if (held != NULL && held->id == ACTOR_EN_ARROW && held->parent == &this->actor &&
+        !(this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
+        // Ammo is charged on release. Killing the prepared arrow is cancellation;
+        // detaching it would launch an unaccounted projectile.
+        Actor_Kill(held);
+        this->heldActor = NULL;
+        this->actor.child = NULL;
+    } else if (this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) {
+        if (VrItemThrow_Active(this)) {
+            const float velocity[3] = { 0.0f, 0.0f, 0.0f };
+            Player_VrReleaseItem(play, this, velocity);
+        } else {
+            if (held != NULL) {
+                held->world.pos = this->leftHandPos;
+                held->speedXZ = 0.0f;
+                held->velocity.x = held->velocity.y = held->velocity.z = 0.0f;
+            }
+            Player_DetachHeldActor(play, this);
+        }
+    } else if (Player_HoldsHookshot(this)) {
+        Player_DestroyHookshot(this);
+    } else if (held != NULL) {
+        return false; // unknown actor ownership needs an explicit adapter
+    }
+
+    func_80832318(this);
+    this->stateFlags1 &= ~(PLAYER_STATE1_READY_TO_FIRE | PLAYER_STATE1_SHIELDING |
+                           PLAYER_STATE1_START_CHANGING_HELD_ITEM);
+    sUseHeldItem = sHeldItemButtonIsHeldDown = false;
+    this->heldItemId = item;
+    this->heldItemButton = slot < 0 ? 0 : slot;
+    this->nextModelGroup = Player_ActionToModelGroup(this, itemAction);
+    explosive = itemAction == PLAYER_IA_BOMB || itemAction == PLAYER_IA_BOMBCHU;
+    if (explosive) {
+        // An uncommitted explosive has no actor, no fuse and no ammo cost.
+        this->heldItemAction = this->itemAction = itemAction;
+        this->unk_85C = this->unk_858 = 0.0f;
+        this->unk_860 = 0;
+        this->stateFlags1 &= ~(PLAYER_STATE1_ITEM_IN_HAND | PLAYER_STATE1_USING_BOOMERANG);
+        Player_SetModelGroup(this, this->nextModelGroup);
+    } else {
+        Player_InitItemActionWithAnim(play, this, itemAction);
+    }
+    Player_SetUpperActionFunc(this, explosive ? func_8083485C : sItemActionUpdateFuncs[itemAction]);
+    this->unk_834 = 0;
+    this->idleType = PLAYER_IDLE_DEFAULT;
+    return true;
+}
+
+// SOH [VR] Restoring a save must not turn input rearming into a projectile release.
+void Player_VrCancelPreparedItem(PlayState* play, Player* this) {
+    if (!VrItemSelect_ModeActive() || this == NULL ||
+        this->heldItemAction != this->itemAction || this->actor.parent != NULL) return;
+    if (this->upperActionFunc == func_808351D4 || this->upperActionFunc == func_80835884 ||
+        this->upperActionFunc == func_808358F0) {
+        if (this->heldActor && this->heldActor->id == ACTOR_EN_ARROW &&
+            this->heldActor->parent == &this->actor &&
+            !(this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
+            Actor_Kill(this->heldActor);
+            this->heldActor = this->actor.child = NULL;
+        }
+        Player_SetUpperActionFunc(this, sItemActionUpdateFuncs[this->heldItemAction]);
+        this->stateFlags1 &= ~PLAYER_STATE1_READY_TO_FIRE;
+        this->unk_834 = 0;
+        sUseHeldItem = sHeldItemButtonIsHeldDown = false;
+    }
+}
+
+// SOH [VR] Falling edge of selector mode (third person, flat screen, F9): the selection
+// fiction belongs to VR first person, so Link's hands clear. Best effort — every branch
+// keeps its own safety gates, and vanilla owns whatever state remains.
+void Player_VrModeExitClearHands(PlayState* play, Player* this) {
+    if (this == NULL || this->actor.category != ACTORCAT_PLAYER || (this->stateFlags1 & PLAYER_STATE1_DEAD) ||
+        this->csAction != 0 || gSaveContext.health == 0) {
+        return;
+    }
+    // Physically carried bomb/nut: gentle zero-impulse release, exactly like switching.
+    if ((this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) && this->heldActor != NULL &&
+        (this->heldItemAction == PLAYER_IA_BOMB || this->heldItemAction == PLAYER_IA_DEKU_NUT) &&
+        this->heldActor->parent == &this->actor &&
+        ((this->heldActor->id == ACTOR_EN_BOM) || (this->heldActor->id == ACTOR_EN_ARROW))) {
+        const float still[3] = { 0.0f, 0.0f, 0.0f };
+        Player_VrReleaseItem(play, this, still);
+    }
+    // Same cancellation as the save-state path, minus the selector-mode gate: this runs on
+    // that mode's falling edge, so any prepared aim state here was entered under selector play.
+    if (this->heldItemAction == this->itemAction && this->actor.parent == NULL &&
+        (this->upperActionFunc == func_808351D4 || this->upperActionFunc == func_80835884 ||
+         this->upperActionFunc == func_808358F0)) {
+        if (this->heldActor != NULL && this->heldActor->id == ACTOR_EN_ARROW &&
+            this->heldActor->parent == &this->actor && !(this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
+            Actor_Kill(this->heldActor);
+            this->heldActor = this->actor.child = NULL;
+        }
+        Player_SetUpperActionFunc(this, sItemActionUpdateFuncs[this->heldItemAction]);
+        this->stateFlags1 &= ~PLAYER_STATE1_READY_TO_FIRE;
+        this->unk_834 = 0;
+        sUseHeldItem = sHeldItemButtonIsHeldDown = false;
+    }
+    // Vanilla put-away for whatever is now idle in hand. Never mid-flight hookshot (heldActor
+    // NULL while the action runs), never a committed boomerang release, never a carried actor.
+    if (this->heldItemAction > PLAYER_IA_NONE && this->heldItemAction == this->itemAction &&
+        !(this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) &&
+        !(this->stateFlags3 & PLAYER_STATE3_FLYING_WITH_HOOKSHOT) && this->actor.parent == NULL &&
+        this->upperActionFunc != func_808359FC &&
+        (this->heldActor == NULL ? !Player_HoldsHookshot(this) : Player_HoldsHookshot(this))) {
+        Player_UseItem(play, this, ITEM_NONE);
+    }
+}
+
+// SOH [VR] Deliberate grab is the consumable commitment point. Preview rendering
+// never calls this function. Failed restrictions/spawn do not spend resources.
+bool Player_VrGrabItem(PlayState* play, Player* this) {
+    const u8 selectedItem = this->heldItemId;
+    if (!VrItemThrow_Active(this) || this->heldActor != NULL ||
+        (this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) ||
+        this->heldItemAction != this->itemAction ||
+        Player_GetItemOnButton(play, this->heldItemButton) != this->heldItemId) {
+        return false;
+    }
+    if (this->heldItemAction == PLAYER_IA_BOMB) {
+        Player_UseItem(play, this, this->heldItemId); // retains ammo and explosive-count gates
+    } else if (this->heldItemAction == PLAYER_IA_DEKU_NUT) {
+        // Same gates as vanilla nut use (func_8083C61C): ammo, room restriction, grounded.
+        if (AMMO(ITEM_NUT) == 0 || play->roomCtx.curRoom.behaviorType1 == ROOM_BEHAVIOR_TYPE1_2 ||
+            !(this->actor.bgCheckFlags & BGCHECKFLAG_GROUND)) {
+            Sfx_PlaySfxCentered(NA_SE_SY_ERROR);
+            return false;
+        }
+        this->heldActor = Actor_SpawnAsChild(&play->actorCtx, &this->actor, play, ACTOR_EN_ARROW,
+                                            this->leftHandPos.x, this->leftHandPos.y, this->leftHandPos.z,
+                                            0, this->actor.shape.rot.y, 0, ARROW_NUT);
+        if (this->heldActor != NULL) {
+            Inventory_ChangeAmmo(ITEM_NUT, -1);
+            this->interactRangeActor = this->heldActor;
+            this->getItemId = GI_NONE;
+            this->getItemEntry = (GetItemEntry)GET_ITEM_NONE;
+            this->stateFlags1 |= PLAYER_STATE1_CARRYING_ACTOR;
+        }
+    }
+    if (this->heldActor == NULL) return false;
+    this->heldItemId = selectedItem; // explosive initialization may clear it while detaching
+    Player_SetUpperActionFunc(this, Player_UpperAction_CarryActor);
+    LinkAnimation_PlayLoop(play, &this->upperSkelAnime, &gPlayerAnim_link_normal_carryB_wait);
+    sUseHeldItem = sHeldItemButtonIsHeldDown = false;
+    return true;
+}
+
+// SOH [VR] After the explosive detach path stows the loadout, put the selected inventory
+// item back at its passive preview stage. Restores selection identity only — never spawns
+// a replacement actor and never refunds ammo.
+static void Player_VrRestorePassiveSelection(Player* this, s8 itemAction, u8 item) {
+    this->heldItemAction = this->itemAction = itemAction;
+    this->heldItemId = item;
+    this->nextModelGroup = Player_ActionToModelGroup(this, itemAction);
+    Player_SetModelGroup(this, this->nextModelGroup);
+    Player_SetUpperActionFunc(this, func_8083485C);
+    sUseHeldItem = sHeldItemButtonIsHeldDown = false;
+}
+
+void Player_VrReleaseItem(PlayState* play, Player* this, const float* velocity) {
+    Actor* held = this->heldActor;
+    const s8 action = this->heldItemAction;
+    const u8 item = this->heldItemId;
+    if (held == NULL || held->parent != &this->actor ||
+        !(this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) return;
+
+    VrItemThrow_UpdateCarryPose(this);
+    held->velocity.x = velocity[0];
+    held->velocity.y = velocity[1];
+    held->velocity.z = velocity[2];
+    held->speedXZ = sqrtf(SQ(velocity[0]) + SQ(velocity[2]));
+    held->world.rot.y = Math_Atan2S(velocity[2], velocity[0]);
+    if (held->id == ACTOR_EN_ARROW && held->params == ARROW_NUT) {
+        EnArrow* nut = (EnArrow*)held;
+        nut->vrPhysicalThrow = true;
+        nut->vrLaunchVelocity = held->velocity;
+    }
+    Player_DetachHeldActor(play, this);
+    Player_VrRestorePassiveSelection(this, action, item);
 }
 
 void func_80836448(PlayState* play, Player* this, LinkAnimationHeader* anim) {
@@ -7641,6 +7909,9 @@ s32 func_8083EAF0(Player* this, Actor* actor) {
 }
 
 s32 Player_ActionHandler_9(Player* this, PlayState* play) {
+    // SOH [VR] Grip release owns physical throws; A/B/C must not also start the
+    // walk-dependent vanilla drop/throw animation while holding a bomb or nut.
+    if (VrItemThrow_Active(this)) return 0;
     u16 buttonsToCheck = BTN_A | BTN_B | BTN_CLEFT | BTN_CRIGHT | BTN_CDOWN;
     if (CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0) != 0) {
         buttonsToCheck |= BTN_DUP | BTN_DDOWN | BTN_DLEFT | BTN_DRIGHT;
@@ -9275,6 +9546,12 @@ s32 func_80842B7C(PlayState* play, Player* this) {
 void func_80842CF0(PlayState* play, Player* this) {
     func_80842AC4(play, this);
     func_80842B7C(play, this);
+}
+
+// SOH [VR] Physical combat's landed impacts consume weapon durability exactly like a vanilla
+// hit: stick break + Giant's Knife wear. Exposed because both live file-internal here.
+void VrCombat_MeleeImpactConsume(PlayState* play, Player* this) {
+    func_80842CF0(play, this);
 }
 
 static LinkAnimationHeader* D_808545CC[] = {
@@ -12495,7 +12772,18 @@ void Player_Update(Actor* thisx, PlayState* play) {
         }
 
         if ((this->heldActor != NULL) && (this->heldActor->update == NULL)) {
+            // SOH [VR] A physically carried bomb/nut that died in hand (exploded, despawned):
+            // the explosive detach path below would stow the selection to ITEM_NONE_FE. Capture
+            // identity first and return the selection to its passive preview — no replacement
+            // actor is spawned and nothing is refunded; the player must grip the preview again.
+            const s8 vrAction = this->heldItemAction;
+            const u8 vrItem = this->heldItemId;
+            const s32 vrRestore = VrItemThrow_Active(this) && (this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) &&
+                                  ((this->heldActor->id == ACTOR_EN_BOM) || (this->heldActor->id == ACTOR_EN_ARROW));
             Player_DetachHeldActor(play, this);
+            if (vrRestore) {
+                Player_VrRestorePassiveSelection(this, vrAction, vrItem);
+            }
         }
 
         if (this->stateFlags1 & (PLAYER_STATE1_INPUT_DISABLED | PLAYER_STATE1_IN_CUTSCENE)) {

@@ -24,10 +24,16 @@ bool VrCombat_Active(void);
 
 // --- Physical melee (VrSwing.cpp) ---
 
-// The held melee weapon is handled by physical combat: 1H swords (Master/Kokiri) and the broken
-// Giant's Knife. Sticks, hammer and the full Biggoron Sword keep vanilla button combat until
-// their own milestones. Also false for the co-op partner (only the real player swings).
+// The held melee weapon is handled by physical combat: swords (Master/Kokiri/Biggoron, incl.
+// the broken Giant's Knife) and the Deku stick. The hammer keeps vanilla button combat until
+// its two-hand milestone. Also false for the co-op partner (only the real player swings).
 bool VrCombat_MeleeCovered(struct Player* player);
+
+// Implemented in z_player.c (// SOH [VR]): forwards to the vanilla landed-hit durability
+// composite func_80842CF0 — the Deku stick snaps (half-stick effect, ammo, put away) and the
+// unbroken Giant's Knife wears toward breaking. No-op for every other weapon, so the physical
+// path calls it on real impacts without weapon-specific dispatch.
+void VrCombat_MeleeImpactConsume(struct PlayState* play, struct Player* player);
 
 // Draw-time feed, called from the Player L_HAND PostLimbDraw seam with the live (controller)
 // matrix on the stack and the blade length already configured (D_80126080.x). Tracks swing
@@ -97,6 +103,32 @@ bool VrItemSelect_ConsumesInput(int32_t vrHand, uint16_t vrBtnMask);
 // padmgr skips their normal bindings — the selector-mode binding profile rehouses Z-target and
 // friends on the grips and face buttons.
 bool VrItemSelect_ModeActive(void);
+// Explicit selection lifecycle. Requests identify an equipped button slot (0..3), or -1
+// for empty hands. The player update owns execution; a newer request replaces the old one.
+void VrItemSelect_Request(int32_t slot);
+int32_t VrItemSelect_PendingSlot(void);
+int32_t VrItemSelect_PendingItem(void);
+void VrItemSelect_FinishRequest(void);
+void VrItemSelect_CancelRequest(void);
+void VrItemSelect_Reset(void);
+bool VrItemSelect_SelectionAllowed(void);
+// Native player bridge: passive equip and safe cancellation, never a simulated item press.
+// 0 = wait, 1 = equipment changed, 2 = rejected/idempotent (preserve held input).
+int32_t Player_VrSelectItem(struct PlayState* play, struct Player* player, int32_t slot);
+void Player_VrCancelPreparedItem(struct PlayState* play, struct Player* player);
+// Falling edge of selector mode (third person, flat screen, F9): clears Link's hands.
+// Gently releases a carried throwable (zero impulse), cancels prepared aiming without
+// firing or spending, then vanilla put-away where safe. Never touches hookshot flight.
+void Player_VrModeExitClearHands(struct PlayState* play, struct Player* player);
+// Preview/grip adapter for bombs and nuts. Tick runs at the native item boundary.
+bool VrItemThrow_Active(struct Player* player);
+void VrItemThrow_Tick(struct PlayState* play, struct Player* player);
+void VrItemThrow_Reset(void);
+bool VrItemThrow_PreviewPosition(float* position);
+bool VrItemThrow_GripConsumed(int32_t hand, uint16_t mask);
+void VrItemThrow_UpdateCarryPose(struct Player* player);
+bool Player_VrGrabItem(struct PlayState* play, struct Player* player);
+void Player_VrReleaseItem(struct PlayState* play, struct Player* player, const float* velocity);
 uint16_t VrItemSelect_TriggerItemMask(int32_t vrHand);
 bool VrItemSelect_TriggerConsumed(int32_t vrHand, uint16_t vrBtnMask);
 
@@ -113,6 +145,21 @@ bool VrItemSelect_SwapConsumed(int32_t vrHand, uint16_t vrBtnMask);
 // selector-mode input reservation stands down, so notes can live on any input — including the
 // triggers and the selector's own click.
 bool VrOcarina_InPlay(void);
+
+// Physical archery (VrArchery.cpp — selector mode): the string hand pinches near the bow hand
+// to nock; while nocked the weapon's item button reads held-down (padmgr ORs ItemButtonMask as
+// raw state, the same mirror trick the trigger uses), so the vanilla draw/hold/release pipeline
+// runs untouched. Covers: bow/slingshot in normal selector play (galleries/bowling/horseback
+// excluded, gVrPhysArchery toggles). PinchConsumed: the string hand's pinch input loses its
+// binding only near the weapon or while drawn. AimSegment: origin + direction of the
+// string->bow line while nocked (consumed by Player_VrAimHeldProjectile; false = fall back to
+// the one-hand aim ray). Reset clears transient nock state.
+bool VrArchery_Covers(struct Player* player);
+bool VrArchery_StringNocked(void);
+uint16_t VrArchery_ItemButtonMask(void);
+bool VrArchery_PinchConsumed(int32_t vrHand, uint16_t vrBtnMask);
+bool VrArchery_AimSegment(float* outPosDir6);
+void VrArchery_Reset(void);
 
 // Projectile fire (VR first person, independent of physical combat): the walk-while-aiming
 // path only fires on the vanilla item-button RELEASE, so the aim hand's trigger is wired in

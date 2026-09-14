@@ -4,12 +4,14 @@ extern "C" {
 #include "functions.h"
 #include "variables.h" // gItemIcons, gMtxClear
 extern PlayState* gPlayState;
-// Both live in z_player.c with no header declaration of their own.
+// All live in z_player.c with no header declaration of their own.
 void Player_UseItem(PlayState* play, Player* player, s32 item);
 s8 Player_ItemToItemAction(s32 item);
+s32 Player_GetItemOnButton(PlayState* play, s32 index);
 }
 
 #include "VrCombat.h"
+#include "VrItemSelectionState.h"
 
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ShipInit.hpp"
@@ -29,9 +31,9 @@ s8 Player_ItemToItemAction(s32 item);
 //
 // Selection is by HAND DISPLACEMENT from the hold-start anchor, measured in the head's frame
 // (lateral = camera right, vertical = world up), with hysteresis on the center boundary and a
-// haptic tick on every highlight change. Execution goes through the real input path
-// (EmulateButtonPress), so items behave exactly as if their C button had been pressed; center
-// uses the vanilla put-away flow. While the selector is open, its hand's thumbstick is
+// haptic tick on every highlight change. Execution queues a passive selection request;
+// the player item update safely cancels or finishes the old interaction before equipping.
+// While the selector is open, its hand's thumbstick is
 // suppressed at the source (no turning/C-buttons from the thumb resting on a clicked stick)
 // and padmgr skips the held input's normal button binding via VrItemSelect_ConsumesInput.
 //
@@ -68,10 +70,24 @@ Vec3f sAnchorOff; // hand-at-hold-start relative to Link's BODY: the compass rid
                   // locomotion never reads as a flick — only hand motion relative to the body.
 Vec3f sHeadRight; // camera right captured at open: stable targets, "left is left as you see it"
 
-// Game ticks left in which a button-driven held-item CHANGE is still allowed: the selector's own
-// EmulateButtonPress is consumed by the next pad poll, a tick or two after ExecuteSector runs, so
-// the block below has to let its own press through by more than a same-frame stamp.
-int sEquipGrace = 0;
+// No grace window and no synthetic press: selection is distinct from activation.
+VrItemSelectionState sSelection;
+
+// Items stay equipped through doors (behavior plan, "Scene transitions keep the selection"):
+// sStable* track the last settled loadout observed in normal play; OnSceneInit arms sRestore*,
+// which re-requests that loadout through the ordinary lifecycle at the first tick selection is
+// allowed in the new scene. Selection identity only — live held objects never cross. Save-state
+// loads clear both (VrItemSelect_Reset): the restored save's own equipped state is the truth.
+int sStableSlot = VrItemSelectionState::NoRequest;
+int sStableItem = -1;
+int sStableAge = -1; // linkAge at capture: time travel clears the selection (agreed), even
+                     // when the same item sits on the same button in both ages.
+int sRestoreSlot = VrItemSelectionState::NoRequest;
+int sRestoreItem = -1;
+
+// Selector mode last tick — the falling edge (third person, flat screen, F9) clears Link's
+// hands per the behavior plan; the selection fiction belongs to VR first person.
+bool sModeWasInPlay = false;
 
 int SwordHand() {
     return CVarGetInteger("gVrLeftHanded", 0) ? VR_HAND_LEFT : VR_HAND_RIGHT;
@@ -189,33 +205,21 @@ void CloseSelector() {
 }
 
 void ExecuteSector(int sector) {
-    Player* player = (gPlayState != NULL) ? GET_PLAYER(gPlayState) : NULL;
-    // The selector is the ONE thing allowed to change the held item in selector mode; open the
-    // window before emulating, since the press lands a tick or two later (see sEquipGrace).
-    sEquipGrace = 3;
     switch (sector) {
         case SEC_LEFT:
-            GameInteractor::RawAction::EmulateButtonPress(BTN_CLEFT);
+            VrItemSelect_Request(1);
             break;
         case SEC_RIGHT:
-            GameInteractor::RawAction::EmulateButtonPress(BTN_CRIGHT);
+            VrItemSelect_Request(3);
             break;
         case SEC_DOWN:
-            GameInteractor::RawAction::EmulateButtonPress(BTN_CDOWN);
+            VrItemSelect_Request(2);
             break;
         case SEC_UP:
-            // Sword and shield: draw the sword via the same path B uses. Already drawn = keep
-            // it (never emulate B with the sword out — outside physical combat that swings).
-            if (player != NULL && Player_GetMeleeWeaponHeld(player) == 0) {
-                GameInteractor::RawAction::EmulateButtonPress(BTN_B);
-            }
+            VrItemSelect_Request(0);
             break;
         default:
-            // Empty hands: the vanilla put-away flow (sheathes the sword, stows the item; the
-            // physical shield stays on the off hand under its own rules).
-            if (player != NULL) {
-                Player_UseItem(gPlayState, player, ITEM_NONE);
-            }
+            VrItemSelect_Request(-1);
             break;
     }
 }
@@ -233,21 +237,71 @@ void QuickSwapTick() {
         return;
     }
     Player* player = GET_PLAYER(gPlayState);
-    if (player == NULL || Player_GetMeleeWeaponHeld(player) != 0) {
+    if (player == NULL) {
         return;
     }
-    sEquipGrace = 3;
-    GameInteractor::RawAction::EmulateButtonPress(BTN_B);
+    VrItemSelect_Request(0);
     VR_TriggerHaptic(VR_HAND_LEFT, 0.4f, 0.0f, 25.0f);
     VR_TriggerHaptic(VR_HAND_RIGHT, 0.4f, 0.0f, 25.0f);
 }
 
 void ItemSelectTick() {
-    if (sEquipGrace > 0) {
-        sEquipGrace--;
+    if (!SelectorModeInPlay()) {
+        if (sModeWasInPlay && gPlayState != NULL && GameInteractor::IsSaveLoaded(true)) {
+            // Falling edge: leaving VR first person clears Link's hands (behavior plan).
+            Player_VrModeExitClearHands(gPlayState, GET_PLAYER(gPlayState));
+        }
+        sModeWasInPlay = false;
+        VrItemSelect_Reset();
+        return;
+    }
+    sModeWasInPlay = true;
+    // Dying resets to empty hands (behavior plan): nothing survives to the respawn — not the
+    // tracked loadout, not an armed door-restore, not a pending request.
+    if (gPlayState != NULL && GameInteractor::IsSaveLoaded(true)) {
+        Player* player = GET_PLAYER(gPlayState);
+        if (player != NULL && ((player->stateFlags1 & PLAYER_STATE1_DEAD) || gSaveContext.health == 0)) {
+            sStableSlot = VrItemSelectionState::NoRequest;
+            sRestoreSlot = VrItemSelectionState::NoRequest;
+            sSelection.CancelRequest();
+        }
+    }
+    for (int hand = 0; hand < 2; ++hand) {
+        sSelection.ObserveTrigger(hand, (VR_GetControllerButton(hand) & VR_BTN_TRIGGER) != 0);
     }
     QuickSwapTick();
     const bool avail = SelectorAvailable();
+    if (!avail) {
+        // Scripted control and transitions invalidate requests, rather than replaying them
+        // when the player regains control in an unrelated situation.
+        sSelection.CancelRequest();
+    } else {
+        Player* player = GET_PLAYER(gPlayState);
+        // Scene-transition restore: one shot at the first allowed tick. A pending player
+        // request wins; a changed button layout drops the restore rather than substituting.
+        if (sRestoreSlot != VrItemSelectionState::NoRequest) {
+            if (sRestoreSlot >= 0 && sSelection.PendingSlot() == VrItemSelectionState::NoRequest &&
+                Player_GetItemOnButton(gPlayState, sRestoreSlot) == sRestoreItem) {
+                VrItemSelect_Request(sRestoreSlot);
+            }
+            sRestoreSlot = VrItemSelectionState::NoRequest;
+        }
+        // Track the settled loadout the next door should carry over: only a state the player
+        // actually holds (no half-finished switches, no pending request).
+        if (player != NULL && player->heldItemAction == player->itemAction &&
+            sSelection.PendingSlot() == VrItemSelectionState::NoRequest) {
+            if (player->heldItemAction <= PLAYER_IA_NONE) {
+                sStableSlot = -1;
+                sStableItem = ITEM_NONE;
+            } else if (player->heldItemButton >= 0 && player->heldItemButton <= 3 &&
+                       Player_ItemToItemAction(Player_GetItemOnButton(gPlayState, player->heldItemButton)) ==
+                           player->heldItemAction) {
+                sStableSlot = player->heldItemButton;
+                sStableItem = Player_GetItemOnButton(gPlayState, player->heldItemButton);
+            }
+            sStableAge = gSaveContext.linkAge;
+        }
+    }
 
     if (!sOpen) {
         if (avail && (VR_GetControllerButton(SelectorHand()) & SelectorMask())) {
@@ -383,8 +437,20 @@ int PushBillboardVtx(const Vec3f& at, const Vec3f& camRight, const Vec3f& camUp,
 // the enclosing function's language linkage — inside a C++ function it would mangle and fail
 // to link against the C definitions (same note as VrCombat_DrawDebugOverlay).
 extern "C" void VrItemSelect_Draw(void) {
-    if (!sOpen || gPlayState == NULL) {
+    if (gPlayState == NULL) {
         return;
+    }
+    Player* player = GET_PLAYER(gPlayState);
+    // (The physical-archery nock icon is a real in-world model drawn by VrArchery.cpp's own
+    // OnPlayDrawEnd hook, deliberately independent of this function's preview gates.)
+    if (!sOpen) {
+        if (!player || !SelectorAvailable() || player->heldItemAction <= PLAYER_IA_NONE ||
+            player->heldItemId >= 158 || player->heldActor != NULL ||
+            (player->modelGroup != PLAYER_MODELGROUP_DEFAULT &&
+             player->heldItemAction != PLAYER_IA_BOMB && player->heldItemAction != PLAYER_IA_BOMBCHU)) return;
+        float position[3], rotation[4];
+        if (!VrItemThrow_PreviewPosition(position) && !VR_GetHandPose(SwordHand(), position, rotation)) return;
+        sAnchor = { position[0], position[1], position[2] };
     }
 
     Gfx* p = sSelDl;
@@ -419,12 +485,15 @@ extern "C" void VrItemSelect_Draw(void) {
         Vec3f at;
         u8 item;
     };
-    const SelTarget targets[4] = {
+    SelTarget targets[4] = {
         { SEC_UP, { 0.0f, ringR, 0.0f }, gSaveContext.equips.buttonItems[0] },
         { SEC_DOWN, { 0.0f, -ringR, 0.0f }, gSaveContext.equips.buttonItems[2] },
         { SEC_LEFT, { -sHeadRight.x * ringR, 0.0f, -sHeadRight.z * ringR }, gSaveContext.equips.buttonItems[1] },
         { SEC_RIGHT, { sHeadRight.x * ringR, 0.0f, sHeadRight.z * ringR }, gSaveContext.equips.buttonItems[3] },
     };
+    if (!sOpen) {
+        targets[0] = { SEC_CENTER, { 0.0f, 0.0f, 0.0f }, player->heldItemId };
+    }
 
     // Setup: textured XLU billboards, no Z compare or write — the compass is UI, never occluded
     // (and never harvested: the visual-mesh gather requires depth-write). The anchor rides in
@@ -441,7 +510,7 @@ extern "C" void VrItemSelect_Draw(void) {
     gSPClearGeometryMode(p++, G_CULL_BOTH | G_LIGHTING);
     gSPTexture(p++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < (sOpen ? 4 : 1); i++) {
         const bool selected = (sSector == targets[i].sector);
         const float hs = selected ? iconHs * 1.35f : iconHs;
         const int base = PushBillboardVtx(targets[i].at, camRight, camUp, hs);
@@ -468,7 +537,7 @@ extern "C" void VrItemSelect_Draw(void) {
     }
 
     // Center: a small ring marker at the anchor (empty hands), brighter while it is the pick.
-    {
+    if (sOpen) {
         const int base = PushBillboardVtx({ 0.0f, 0.0f, 0.0f }, camRight, camUp,
                                           (sSector == SEC_CENTER) ? iconHs * 0.55f : iconHs * 0.35f);
         if (base >= 0) {
@@ -521,8 +590,50 @@ extern "C" bool VrItemSelect_ModeActive(void) {
     return SelectorModeInPlay();
 }
 
+extern "C" bool VrItemSelect_SelectionAllowed(void) {
+    return SelectorAvailable();
+}
+
+extern "C" void VrItemSelect_Request(int32_t slot) {
+    if (slot >= -1 && slot <= 3 && SelectorAvailable()) {
+        // Capture identity through the SAME lens the executor validates with
+        // (Player_GetItemOnButton, z_player.c:3690). Raw buttonItems[] disagrees on slot 0
+        // when the broken Giant's Knife substitutes: capture KNIFE vs validate BGS would
+        // reject the sword loadout forever (Opus review finding A1).
+        sSelection.Request(slot, slot < 0 ? ITEM_NONE : Player_GetItemOnButton(gPlayState, slot));
+    }
+}
+
+extern "C" int32_t VrItemSelect_PendingSlot(void) {
+    return sSelection.PendingSlot();
+}
+
+extern "C" int32_t VrItemSelect_PendingItem(void) {
+    return sSelection.PendingItem();
+}
+
+extern "C" void VrItemSelect_FinishRequest(void) {
+    sSelection.Finish();
+    VrItemThrow_Reset();
+}
+
+extern "C" void VrItemSelect_CancelRequest(void) {
+    sSelection.CancelRequest();
+}
+
+extern "C" void VrItemSelect_Reset(void) {
+    VrItemSelect_FinishRequest();
+    VrItemThrow_Reset();
+    VrArchery_Reset();
+    CloseSelector();
+    // Transient by design: a reset (save-state load, exit game, mode off) belongs to a state
+    // where neither the pending restore nor the tracked loadout is trustworthy anymore.
+    sRestoreSlot = VrItemSelectionState::NoRequest;
+    sStableSlot = VrItemSelectionState::NoRequest;
+}
+
 extern "C" uint16_t VrItemSelect_TriggerItemMask(int32_t vrHand) {
-    if (!SelectorModeInPlay() || gPlayState == NULL) {
+    if (!SelectorModeInPlay() || gPlayState == NULL || !sSelection.TriggerArmed(vrHand)) {
         return 0;
     }
     // While the ocarina is up its own binding set rules: without this, the holding hand's
@@ -533,6 +644,12 @@ extern "C" uint16_t VrItemSelect_TriggerItemMask(int32_t vrHand) {
     Player* player = GET_PLAYER(gPlayState);
     if (player == NULL || HeldItemVrHand(player) != vrHand) {
         return 0;
+    }
+    if (VrItemThrow_Active(player)) {
+        return 0; // grip owns preparing/releasing these items
+    }
+    if (VrArchery_Covers(player)) {
+        return 0; // the string-hand pinch owns nock/draw/fire (VrArchery_ItemButtonMask)
     }
     // Physical combat owns the weapons it covers: the swing IS the attack, so the sword hand's
     // trigger stays idle rather than also emitting B. Weapons physical combat does NOT cover
@@ -554,7 +671,21 @@ extern "C" bool VrItemSelect_TriggerConsumed(int32_t vrHand, uint16_t vrBtnMask)
 }
 
 static void RegisterVrItemSelect() {
-    COND_HOOK(OnPlayerUpdate, CVarGetInteger("gVrItemSelect", 1), ItemSelectTick);
+    COND_HOOK(OnPlayerUpdate, true, ItemSelectTick);
+    COND_HOOK(OnSceneInit, true, [](int16_t) {
+        // Items stay equipped through doors: carry the settled loadout across the reset and
+        // arm the one-shot restore. Empty hands (-1) needs no restore — scenes start empty.
+        // Time travel clears instead (age changed since capture), agreed in the behavior plan.
+        const int slot = sStableSlot;
+        const int item = sStableItem;
+        const int age = sStableAge;
+        VrItemSelect_Reset();
+        if (slot >= 0 && age == (int)gSaveContext.linkAge) {
+            sRestoreSlot = slot;
+            sRestoreItem = item;
+        }
+    });
+    COND_HOOK(OnExitGame, true, [](int32_t) { VrItemSelect_Reset(); });
     COND_HOOK(OnPlayDrawEnd, CVarGetInteger("gVrItemSelect", 1), VrItemSelect_Draw);
 
     // Rule 1 (see the file header): in selector mode no button may CHANGE what's in Link's hands
@@ -563,7 +694,10 @@ static void RegisterVrItemSelect() {
     COND_VB_SHOULD(VB_CHANGE_HELD_ITEM_AND_USE_ITEM, CVarGetInteger("gVrItemSelect", 1), {
         int32_t item = va_arg(args, int32_t);
         Player* player = (gPlayState != NULL) ? GET_PLAYER(gPlayState) : NULL;
-        if (SelectorModeInPlay() && (sEquipGrace == 0) && (player != NULL) &&
+        if (VrItemThrow_Active(player)) {
+            *should = false;
+        }
+        if (SelectorModeInPlay() && (player != NULL) &&
             (Player_ItemToItemAction(item) != player->heldItemAction)) {
             *should = false;
         }
