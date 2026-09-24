@@ -527,9 +527,9 @@ void EnArrow_Draw(Actor* thisx, PlayState* play) {
         Gfx_SetupDL_25Opa(play->state.gfxCtx);
         SkelAnime_DrawLod(play, this->skelAnime.skeleton, this->skelAnime.jointTable, NULL, NULL, this,
                           (this->actor.projectedPos.z < MREG(95)) ? 0 : 1);
-    } else if ((this->actor.params == ARROW_NUT || this->actor.params == ARROW_SEED) &&
-               VrItemThrow_DrawNutModel(&this->actor, play)) {
-        // SOH [VR] QuestShip: 3D nut / seed in the hand and in flight (see VrItemThrow.cpp)
+    } else if (this->actor.params == ARROW_NUT && VrItemThrow_DrawNutModel(&this->actor, play)) {
+        // SOH [VR] QuestShip: 3D nut in the hand and in flight (see VrItemThrow.cpp). Slingshot
+        // seeds keep the vanilla glowing sparkle in flight and draw nothing while nocked.
     } else if (this->actor.speedXZ != 0.0f) {
         alpha = (Math_CosS(this->timer * 5000) * 127.5f) + 127.5f;
 

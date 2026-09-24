@@ -4,6 +4,7 @@ extern "C" {
 #include "functions.h"
 #include "variables.h" // gMtxClear
 #include "objects/gameplay_keep/gameplay_keep.h"
+#include "textures/parameter_static/parameter_static.h" // HUD counter digits
 extern PlayState* gPlayState;
 }
 #include "VrCombat.h"
@@ -138,6 +139,8 @@ extern "C" void VrArchery_Reset(void) {
     sAimLatchTicks = 0;
 }
 
+Vtx sAmmoVtx[3 * 4]; // QuestShip: ammo digits at the nock point
+
 // Nock-point icon: a miniature Deku Nut (the classic drop model, gameplay_keep so it is
 // always loaded) rendered in-world at the nock anchor while the bow/slingshot is out and no
 // nock is drawn. It grows when the string hand is in pinch reach. DELIBERATELY minimal gates
@@ -160,21 +163,68 @@ extern "C" void VrArchery_DrawNockIcon(void) {
         return;
     }
 
+    // QuestShip: the nock marker shows the AMMO LEFT (seeds / arrows) in the HUD's own digit font,
+    // instead of a Deku Nut icon. Always readable: translucent, no depth test. Red at zero.
+    const int ammo = (player->heldItemAction == PLAYER_IA_SLINGSHOT) ? AMMO(ITEM_SLINGSHOT) : AMMO(ITEM_BOW);
+    int digits[3];
+    int nd = 0;
+    {
+        int v = ammo < 0 ? 0 : (ammo > 999 ? 999 : ammo);
+        do {
+            digits[nd++] = v % 10;
+            v /= 10;
+        } while (v > 0 && nd < 3);
+    }
+    static const char* kDigitTex[10] = { gCounterDigit0Tex, gCounterDigit1Tex, gCounterDigit2Tex, gCounterDigit3Tex,
+                                         gCounterDigit4Tex, gCounterDigit5Tex, gCounterDigit6Tex, gCounterDigit7Tex,
+                                         gCounterDigit8Tex, gCounterDigit9Tex };
+    // Digit cells in texture pixels (8x16); the matrix scales a 16-px glyph to the chosen height.
+    for (int i = 0; i < nd; i++) {
+        const int x0 = (nd * 8) / 2 - (i + 1) * 8; // digits[0] is the ones place, rightmost
+        Vtx* v = &sAmmoVtx[i * 4];
+        const s16 xs[4] = { (s16)x0, (s16)(x0 + 8), (s16)x0, (s16)(x0 + 8) };
+        const s16 ys[4] = { 8, 8, -8, -8 };
+        const s16 ss[4] = { 0, 8 << 5, 0, 8 << 5 };
+        const s16 ts[4] = { 0, 0, 16 << 5, 16 << 5 };
+        for (int k = 0; k < 4; k++) {
+            v[k].v.ob[0] = xs[k];
+            v[k].v.ob[1] = ys[k];
+            v[k].v.ob[2] = 0;
+            v[k].v.flag = 0;
+            v[k].v.tc[0] = ss[k];
+            v[k].v.tc[1] = ts[k];
+            v[k].v.cn[0] = v[k].v.cn[1] = v[k].v.cn[2] = v[k].v.cn[3] = 255;
+        }
+    }
+    const float heightUnits = CVarGetFloat("gVrArcheryAmmoSize", 3.0f) * 0.01f * WorldScale();
+
     OPEN_DISPS(gPlayState->state.gfxCtx);
     FrameInterpolation_RecordOpenChild((const void*)&sNocked, 0);
     Matrix_Translate(anchor[0], anchor[1], anchor[2], MTXMODE_NEW);
     Matrix_ReplaceRotation(&gPlayState->billboardMtxF);
-    // Base size = the drop actor's 0.03 scaled by the user's percent; grows when in reach.
-    float iconScale = 0.0003f * CVarGetFloat("gVrArcheryIconScale", 25.0f);
-    if (NearBow()) {
-        iconScale *= 1.4f;
+    const float sc = heightUnits / 16.0f * (NearBow() ? 1.25f : 1.0f);
+    Matrix_Scale(sc, sc, sc, MTXMODE_APPLY);
+    gSPVrPhysMask(POLY_XLU_DISP++, 1);
+    gDPPipeSync(POLY_XLU_DISP++);
+    gDPSetCycleType(POLY_XLU_DISP++, G_CYC_1CYCLE);
+    gDPSetRenderMode(POLY_XLU_DISP++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+    gDPSetCombineMode(POLY_XLU_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+    if (ammo <= 0) {
+        gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, 255, 80, 60, 255);
+    } else {
+        gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, 255, 255, 255, 255);
     }
-    Matrix_Scale(iconScale, iconScale, iconScale, MTXMODE_APPLY);
-    POLY_OPA_DISP = Play_SetFog(gPlayState, POLY_OPA_DISP);
-    POLY_OPA_DISP = Gfx_SetupDL_66(POLY_OPA_DISP);
-    gSPSegment(POLY_OPA_DISP++, 0x08, (uintptr_t)SEGMENTED_TO_VIRTUAL(gDropDekuNutTex));
-    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gPlayState->state.gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
-    gSPDisplayList(POLY_OPA_DISP++, (Gfx*)gItemDropDL);
+    gSPClearGeometryMode(POLY_XLU_DISP++, G_CULL_BOTH | G_LIGHTING | G_FOG);
+    gSPTexture(POLY_XLU_DISP++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
+    gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(gPlayState->state.gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
+    for (int i = 0; i < nd; i++) {
+        gDPLoadTextureBlock(POLY_XLU_DISP++, kDigitTex[digits[i]], G_IM_FMT_I, G_IM_SIZ_8b, 8, 16, 0,
+                            G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK,
+                            G_TX_NOLOD, G_TX_NOLOD);
+        gSPVertex(POLY_XLU_DISP++, (uintptr_t)&sAmmoVtx[i * 4], 4, 0);
+        gSP2Triangles(POLY_XLU_DISP++, 0, 2, 1, 0, 1, 2, 3, 0);
+    }
+    gSPVrPhysMask(POLY_XLU_DISP++, 0);
     FrameInterpolation_RecordCloseChild();
     CLOSE_DISPS(gPlayState->state.gfxCtx);
 }
@@ -185,8 +235,8 @@ extern "C" void VrArchery_DrawNockIcon(void) {
 // the flight timer (15 / 12) drops below 7.2, killed at 0. Stops at the first surface it would
 // hit. Camera-facing, fading toward the end, no depth write, masked out of combat collision.
 constexpr int kTrajMaxPts = 16;
-Vtx sTrajVtx[kTrajMaxPts * 2];
-Gfx sTrajDl[40];
+Vtx sTrajVtx[kTrajMaxPts * 3];
+Gfx sTrajDl[96];
 
 extern "C" void VrArchery_DrawTrajectory(void) {
     if (gPlayState == NULL || !CVarGetInteger("gVrArcheryTrajectory", 1) || !sNocked) {
@@ -237,30 +287,43 @@ extern "C" void VrArchery_DrawTrajectory(void) {
 
     float eye[3], fwd[3], up[3];
     VR_GetCameraPose(eye, fwd, up);
-    const float baseHw = CVarGetFloat("gVrArcheryTrajectoryWidth", 0.35f); // game units (~1 cm)
-    const int alpha0 = CVarGetInteger("gVrArcheryTrajectoryAlpha", 110);
+    // A thin 3-sided TUBE (triangular prism) rather than a camera-facing strip: a flat strip
+    // turns edge-on as the head moves between 20 Hz updates (and differs per eye), so it
+    // flickered thinner/thicker. A tube reads the same from every angle. Radius still scales
+    // with distance so it stays a thin line on screen.
+    const float widthK = CVarGetFloat("gVrArcheryTrajectoryWidth", 0.0012f);
+    const int alpha0 = CVarGetInteger("gVrArcheryTrajectoryAlpha", 120);
     for (int i = 0; i < n; i++) {
         const Vec3f& a = pts[i > 0 ? i - 1 : 0];
         const Vec3f& b = pts[i > 0 ? i : 1];
-        float tx = b.x - a.x, ty = b.y - a.y, tz = b.z - a.z; // segment tangent
-        float ex = eye[0] - pts[i].x, ey = eye[1] - pts[i].y, ez = eye[2] - pts[i].z;
-        const float dist = sqrtf(ex * ex + ey * ey + ez * ez);
-        // side = tangent x to-eye, so the ribbon faces the viewer
-        float sx = ty * ez - tz * ey, sy = tz * ex - tx * ez, sz = tx * ey - ty * ex;
-        const float sl = sqrtf(sx * sx + sy * sy + sz * sz);
-        const float hw = fmaxf(baseHw, dist * 0.0025f); // keep far segments visible (~0.15 deg)
-        if (sl > 1e-4f) {
-            sx *= hw / sl;
-            sy *= hw / sl;
-            sz *= hw / sl;
+        float tx = b.x - a.x, ty = b.y - a.y, tz = b.z - a.z;
+        const float tl = sqrtf(tx * tx + ty * ty + tz * tz);
+        if (tl > 1e-4f) {
+            tx /= tl;
+            ty /= tl;
+            tz /= tl;
         }
+        // n1 = tangent x worldUp (fallback X), n2 = tangent x n1
+        float n1x = -tz, n1y = 0.0f, n1z = tx;
+        float n1l = sqrtf(n1x * n1x + n1z * n1z);
+        if (n1l < 1e-3f) {
+            n1x = 1.0f;
+            n1z = 0.0f;
+            n1l = 1.0f;
+        }
+        n1x /= n1l;
+        n1z /= n1l;
+        const float n2x = ty * n1z - tz * n1y, n2y = tz * n1x - tx * n1z, n2z = tx * n1y - ty * n1x;
+        const float ex = eye[0] - pts[i].x, ey = eye[1] - pts[i].y, ez = eye[2] - pts[i].z;
+        const float r = fmaxf(0.03f, sqrtf(ex * ex + ey * ey + ez * ez) * widthK);
         const u8 al = (u8)(alpha0 * (1.0f - (float)i / (float)(n - 1)));
-        for (int k = 0; k < 2; k++) {
-            const float sgn = k == 0 ? 1.0f : -1.0f;
-            Vtx& v = sTrajVtx[i * 2 + k];
-            v.v.ob[0] = (s16)(pts[i].x + sx * sgn);
-            v.v.ob[1] = (s16)(pts[i].y + sy * sgn);
-            v.v.ob[2] = (s16)(pts[i].z + sz * sgn);
+        static const float kC[3] = { 1.0f, -0.5f, -0.5f };
+        static const float kS[3] = { 0.0f, 0.8660254f, -0.8660254f };
+        for (int k = 0; k < 3; k++) {
+            Vtx& v = sTrajVtx[i * 3 + k];
+            v.v.ob[0] = (s16)(pts[i].x + (n1x * kC[k] + n2x * kS[k]) * r);
+            v.v.ob[1] = (s16)(pts[i].y + (n1y * kC[k] + n2y * kS[k]) * r);
+            v.v.ob[2] = (s16)(pts[i].z + (n1z * kC[k] + n2z * kS[k]) * r);
             v.v.flag = 0;
             v.v.tc[0] = v.v.tc[1] = 0;
             v.v.cn[0] = 255;
@@ -280,9 +343,12 @@ extern "C" void VrArchery_DrawTrajectory(void) {
     gSPClearGeometryMode(p++, G_CULL_BOTH | G_LIGHTING | G_FOG);
     gSPSetGeometryMode(p++, G_SHADE | G_SHADING_SMOOTH);
     gSPMatrix(p++, &gMtxClear, G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
-    gSPVertex(p++, (uintptr_t)sTrajVtx, n * 2, 0);
     for (int i = 0; i + 1 < n; i++) {
-        gSP2Triangles(p++, i * 2, i * 2 + 1, i * 2 + 2, 0, i * 2 + 1, i * 2 + 3, i * 2 + 2, 0);
+        // two rings (6 verts): 0-2 this point, 3-5 next; three quads around the tube
+        gSPVertex(p++, (uintptr_t)&sTrajVtx[i * 3], 6, 0);
+        gSP2Triangles(p++, 0, 1, 3, 0, 1, 4, 3, 0);
+        gSP2Triangles(p++, 1, 2, 4, 0, 2, 5, 4, 0);
+        gSP2Triangles(p++, 2, 0, 5, 0, 0, 3, 5, 0);
     }
     gSPVrPhysMask(p++, 0);
     gSPEndDisplayList(p++);
@@ -374,9 +440,40 @@ extern "C" bool VrArchery_AimSegment(float* outPosDir6) {
         return false;
     }
     const float len = std::sqrt(d2);
+    // QuestShip: the slingshot shot leaves from BETWEEN THE TINES, not from the fork's V where
+    // the string is pinched: lift the origin along the weapon hand's pointing axis (the axis the
+    // fork extends along; same frame as gVrArcheryAnchorFwd). Direction is unchanged, so aiming
+    // by the pull line feels the same.
+    float lift[3] = { 0.0f, 0.0f, 0.0f };
+    if (GET_PLAYER(gPlayState)->heldItemAction == PLAYER_IA_SLINGSHOT) {
+        float bp[3], br[4];
+        if (VR_GetHandPose(BowHand(), bp, br)) {
+            const float local[3] = { 0.0f, 0.0f, -CVarGetFloat("gVrSlingshotLaunchLift", 6.0f) * 0.01f * WorldScale() };
+            QuatRot(br, local, lift);
+        }
+    }
+    float dir[3] = { (a[0] - s[0]) / len, (a[1] - s[1]) / len, (a[2] - s[2]) / len };
+    // QuestShip: slingshot aim felt like it tilted down; pitch the launch direction UP by
+    // gVrSlingshotAimPitch degrees (about the horizontal axis across the shot). Shot and
+    // trajectory line both use this direction.
+    if (GET_PLAYER(gPlayState)->heldItemAction == PLAYER_IA_SLINGSHOT) {
+        const float pitch = CVarGetFloat("gVrSlingshotAimPitch", 3.0f) * (float)(M_PI / 180.0);
+        // up component perpendicular to dir
+        float ux = -dir[1] * dir[0], uy = 1.0f - dir[1] * dir[1], uz = -dir[1] * dir[2];
+        const float ul = std::sqrt(ux * ux + uy * uy + uz * uz);
+        if (ul > 1e-3f) {
+            ux /= ul;
+            uy /= ul;
+            uz /= ul;
+            const float c = std::cos(pitch), sn = std::sin(pitch);
+            dir[0] = dir[0] * c + ux * sn;
+            dir[1] = dir[1] * c + uy * sn;
+            dir[2] = dir[2] * c + uz * sn;
+        }
+    }
     for (int i = 0; i < 3; i++) {
-        sAimLatch[i] = a[i];
-        sAimLatch[3 + i] = (a[i] - s[i]) / len;
+        sAimLatch[i] = a[i] + lift[i];
+        sAimLatch[3 + i] = dir[i];
         outPosDir6[i] = sAimLatch[i];
         outPosDir6[3 + i] = sAimLatch[3 + i];
     }

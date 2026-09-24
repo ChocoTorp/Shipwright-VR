@@ -186,8 +186,7 @@ extern "C" void VrItemThrow_Tick(PlayState* play, Player* player) {
     }
 }
 
-// ---- QuestShip: the Deku Nut (and slingshot Deku Seed) as real 3D models in VR ----
-// Seeds follow the same rules: welded to the string (pouch) hand while nocked, tumbling in flight.
+// ---- QuestShip: the Deku Nut as a real 3D nut in VR ---- (slingshot seeds stay vanilla)
 // Vanilla has no nut model for the projectile: in flight it is a near-black spinning sparkle
 // (EnArrow_Draw, ARROW_NUT), and while carried it draws nothing (that path needs speedXZ != 0).
 // In VR the nut is the get-item model instead: welded to the carrying hand at headset rate
@@ -219,7 +218,7 @@ void WeldEmittedToHand(Gfx* from, Gfx* to, int hand, MtxF* handInv) {
 } // namespace
 
 extern "C" bool VrItemThrow_DrawNutModel(Actor* actor, PlayState* play) {
-    if (actor == NULL || play == NULL || (actor->params != ARROW_NUT && actor->params != ARROW_SEED) ||
+    if (actor == NULL || play == NULL || actor->params != ARROW_NUT ||
         !VR_IsInitialized() || !CVarGetInteger("gVrNutModel", 1)) {
         return false;
     }
@@ -230,6 +229,9 @@ extern "C" bool VrItemThrow_DrawNutModel(Actor* actor, PlayState* play) {
     const bool flying = actor->parent == NULL && (actor->speedXZ != 0.0f || actor->velocity.y != 0.0f);
     if (!held && !flying) {
         return false;
+    }
+    if (held && isSeed) {
+        return false; // the pulled seed stays invisible (vanilla draws nothing at rest)
     }
     const float scale = isSeed ? CVarGetFloat("gVrSeedModelScale", 0.05f) : CVarGetFloat("gVrNutModelScale", 0.06f);
 
