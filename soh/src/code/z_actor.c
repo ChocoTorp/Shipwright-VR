@@ -3019,6 +3019,17 @@ void Actor_DrawLensActors(PlayState* play, s32 numInvisibleActors, Actor** invis
     CLOSE_DISPS(gfxCtx);
 }
 
+// SOH [VR] QuestShip: the forward draw-distance test uses depth along the camera's view axis, so an
+// object off to the side (shorter depth) is drawn but vanishes when looked at directly. Invisible
+// on a TV, obvious with a turnable head. In VR, test the straight-line distance from the camera eye
+// instead, so what is drawn no longer depends on where you look.
+static f32 Actor_CullForwardDist(PlayState* play, Actor* actor, Vec3f* projectedPos) {
+    if (VR_IsInitialized()) {
+        return Math_Vec3f_DistXYZ(&play->view.eye, &actor->world.pos);
+    }
+    return projectedPos->z;
+}
+
 s32 Actor_CullingCheck(PlayState* play, Actor* actor) {
     return Actor_CullingVolumeTest(play, actor, &actor->projectedPos, actor->projectedW);
 }
@@ -3026,7 +3037,8 @@ s32 Actor_CullingCheck(PlayState* play, Actor* actor) {
 s32 Actor_CullingVolumeTest(PlayState* play, Actor* actor, Vec3f* arg2, f32 arg3) {
     f32 var;
 
-    if ((arg2->z > -actor->uncullZoneScale) && (arg2->z < (actor->uncullZoneForward + actor->uncullZoneScale))) {
+    if ((arg2->z > -actor->uncullZoneScale) &&
+        (Actor_CullForwardDist(play, actor, arg2) < (actor->uncullZoneForward + actor->uncullZoneScale))) {
         var = (arg3 < 1.0f) ? 1.0f : 1.0f / arg3;
 
         if ((((fabsf(arg2->x) - actor->uncullZoneScale) * var) < 1.0f) &&
@@ -3065,7 +3077,8 @@ s32 Ship_CalcShouldDrawAndUpdate(PlayState* play, Actor* actor, Vec3f* projected
     f32 adder = (actor->uncullZoneForward < 500) ? 1000.0f : 0.0f;
 
     if ((projectedPos->z > -actor->uncullZoneScale) &&
-        (projectedPos->z < (((actor->uncullZoneForward + adder) * multiplier) + actor->uncullZoneScale))) {
+        (Actor_CullForwardDist(play, actor, projectedPos) <
+         (((actor->uncullZoneForward + adder) * multiplier) + actor->uncullZoneScale))) {
         clampedProjectedW = (projectedW < 1.0f) ? 1.0f : 1.0f / projectedW;
 
         f32 ratioAdjusted = 1.0f;

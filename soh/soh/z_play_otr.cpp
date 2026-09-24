@@ -39,6 +39,11 @@ extern "C" void OTRPlay_SpawnScene(PlayState* play, s32 sceneId, s32 spawn) {
     std::string scenePath = StringHelper::Sprintf("scenes/%s/%s/%s", sceneVersion.c_str(), scene->sceneFile.fileName,
                                                   scene->sceneFile.fileName);
 
+    // QuestShip: start loading this scene's HD texture-pack textures on the worker pool now, in
+    // parallel, so they are cached by the time the renderer first asks for them.
+    Ship::Context::GetRawInstance()->GetResourceManager()->PreloadAltTexturesAsync(
+        StringHelper::Sprintf("scenes/%s/%s/*", sceneVersion.c_str(), scene->sceneFile.fileName));
+
     play->sceneSegment = OTRPlay_LoadFile(play, scenePath.c_str());
 
     // Failed to load scene... default to doodongs cavern

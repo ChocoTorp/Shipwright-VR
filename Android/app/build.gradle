@@ -44,7 +44,9 @@ android {
                     arguments "-DSDL_SHARED=ON", "-DANDROID_STL=c++_static", "-DHAVE_LD_VERSION_SCRIPT=OFF",'-DUSE_OPENGLES=ON', "-DBUILD_REMOTE_CONTROL=1", "-DANDROID_APP_VERSION_NAME=${androidAppVersionName}", "-DSOH_CONFIG_FILENAME=${sohConfigFile}",
                               // QuestShip: the debug variant compiled the game code at -O0 (only
                               // libultraship set -O2 itself). Optimize it, keep symbols for profiling.
-                              "-DCMAKE_C_FLAGS_DEBUG=-O2 -g", "-DCMAKE_CXX_FLAGS_DEBUG=-O2 -g"
+                              "-DCMAKE_C_FLAGS_DEBUG=-O2 -g", "-DCMAKE_CXX_FLAGS_DEBUG=-O2 -g",
+                              // QuestShip: compile out trace/debug logging (thousands of lines/s during loads)
+                              "-DSPDLOG_MIN_CUTOFF=SPDLOG_LEVEL_INFO"
                     abiFilters 'arm64-v8a'
                 }
             }
