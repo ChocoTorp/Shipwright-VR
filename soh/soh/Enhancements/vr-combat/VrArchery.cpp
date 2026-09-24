@@ -15,6 +15,7 @@ extern PlayState* gPlayState;
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <vr_interface.h>
 #include <cmath>
+#include <cstring>
 
 // Physical archery (VR first person, selector mode; slingshot first, bow inherits): the weapon
 // rides the OFF hand (bow/slingshot are right-hand models under motion hands), and the string
@@ -216,7 +217,28 @@ extern "C" void VrArchery_DrawNockIcon(void) {
     }
     gSPClearGeometryMode(POLY_XLU_DISP++, G_CULL_BOTH | G_LIGHTING | G_FOG);
     gSPTexture(POLY_XLU_DISP++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
-    gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(gPlayState->state.gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
+    {
+        // QuestShip: weld the counter to the slingshot/bow hand at headset rate. Its position was
+        // taken from the hand at this 20 Hz tick, so as a plain world matrix it trailed the live
+        // hand when walking or moving the arm. Register it as a live CHILD of the hand (like the
+        // bowstring): local = inverse(hand now) x this matrix, re-composed with the live hand pose
+        // every frame by the renderer.
+        Mtx* ammoMtx = MATRIX_NEWMTX(gPlayState->state.gfxCtx);
+        float hm[4][4];
+        if (VR_GetHandMatrix(BowHand(), hm)) {
+            MtxF hand;
+            MtxF handInv;
+            MtxF cur;
+            MtxF local;
+            memcpy(hand.mf, hm, sizeof(hand.mf));
+            if (SkinMatrix_Invert(&hand, &handInv) == 0) {
+                Matrix_Get(&cur);
+                SkinMatrix_MtxFMtxFMult(&handInv, &cur, &local);
+                VR_RegisterHandChildMatrix((const void*)ammoMtx, BowHand(), &local.mf[0][0]);
+            }
+        }
+        gSPMatrix(POLY_XLU_DISP++, ammoMtx, G_MTX_MODELVIEW | G_MTX_LOAD);
+    }
     for (int i = 0; i < nd; i++) {
         gDPLoadTextureBlock(POLY_XLU_DISP++, kDigitTex[digits[i]], G_IM_FMT_I, G_IM_SIZ_8b, 8, 16, 0,
                             G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK,
@@ -342,7 +364,22 @@ extern "C" void VrArchery_DrawTrajectory(void) {
     gSPTexture(p++, 0, 0, 0, G_TX_RENDERTILE, G_OFF);
     gSPClearGeometryMode(p++, G_CULL_BOTH | G_LIGHTING | G_FOG);
     gSPSetGeometryMode(p++, G_SHADE | G_SHADING_SMOOTH);
-    gSPMatrix(p++, &gMtxClear, G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
+    {
+        // QuestShip: vertices are world-space at this 20 Hz tick; weld them to the bow hand (live
+        // hand x inverse(hand at this tick)) so the line doesn't trail while walking.
+        Matrix_Translate(0.0f, 0.0f, 0.0f, MTXMODE_NEW);
+        Mtx* lineMtx = MATRIX_NEWMTX(gPlayState->state.gfxCtx);
+        float hm[4][4];
+        if (VR_GetHandMatrix(BowHand(), hm)) {
+            MtxF hand;
+            MtxF handInv;
+            memcpy(hand.mf, hm, sizeof(hand.mf));
+            if (SkinMatrix_Invert(&hand, &handInv) == 0) {
+                VR_RegisterHandChildMatrix((const void*)lineMtx, BowHand(), &handInv.mf[0][0]);
+            }
+        }
+        gSPMatrix(p++, lineMtx, G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
+    }
     for (int i = 0; i + 1 < n; i++) {
         // two rings (6 verts): 0-2 this point, 3-5 next; three quads around the tube
         gSPVertex(p++, (uintptr_t)&sTrajVtx[i * 3], 6, 0);

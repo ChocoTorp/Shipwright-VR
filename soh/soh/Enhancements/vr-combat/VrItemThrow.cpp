@@ -241,21 +241,28 @@ extern "C" bool VrItemThrow_DrawNutModel(Actor* actor, PlayState* play) {
     Gfx* xluStart = POLY_XLU_DISP;
     if (held) {
         const int hand = isSeed ? VrArchery_StringHand() : CarryHand();
-        float pos[3] = { actor->world.pos.x, actor->world.pos.y, actor->world.pos.z };
-        float rot[4];
-        VR_GetHandPose(hand, pos, rot);
-        Matrix_Translate(pos[0], pos[1], pos[2], MTXMODE_NEW);
-        Matrix_Scale(scale, scale, scale, MTXMODE_APPLY);
-        GetItem_Draw(play, gid);
+        // Start from the hand's full matrix (position AND orientation), scaled to nut size, so the
+        // nut is rigidly in the grip. (Position-only made it snap back to a neutral orientation
+        // at every 20 Hz tick, only turning with the hand in between.)
         float hm[4][4];
         if (VR_GetHandMatrix(hand, hm)) {
             MtxF handMtx;
             MtxF handInv;
             memcpy(handMtx.mf, hm, sizeof(handMtx.mf));
+            // The hand matrix carries Link's model scale; normalize it out of the nut's size.
+            const float handScale = sqrtf(hm[0][0] * hm[0][0] + hm[0][1] * hm[0][1] + hm[0][2] * hm[0][2]);
+            const float rel = handScale > 1e-6f ? scale / handScale : scale;
+            Matrix_Put(&handMtx);
+            Matrix_Scale(rel, rel, rel, MTXMODE_APPLY);
+            GetItem_Draw(play, gid);
             if (SkinMatrix_Invert(&handMtx, &handInv) == 0) {
                 WeldEmittedToHand(opaStart, POLY_OPA_DISP, hand, &handInv);
                 WeldEmittedToHand(xluStart, POLY_XLU_DISP, hand, &handInv);
             }
+        } else {
+            Matrix_Translate(actor->world.pos.x, actor->world.pos.y, actor->world.pos.z, MTXMODE_NEW);
+            Matrix_Scale(scale, scale, scale, MTXMODE_APPLY);
+            GetItem_Draw(play, gid);
         }
     } else {
         const float spin = (float)((play->gameplayFrames & 0xFF) * 4000) * (float)(M_PI / 0x8000);

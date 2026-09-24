@@ -935,6 +935,9 @@ void OTRGlobals::Initialize() {
                                     "Texture", static_cast<uint32_t>(Fast::ResourceType::Texture), 0);
     loader->RegisterResourceFactory(std::make_shared<Fast::ResourceFactoryBinaryTextureV1>(), RESOURCE_FORMAT_BINARY,
                                     "Texture", static_cast<uint32_t>(Fast::ResourceType::Texture), 1);
+    // QuestShip: ASTC texture-pack textures (questship-texconv)
+    loader->RegisterResourceFactory(std::make_shared<Fast::ResourceFactoryBinaryTextureV2>(), RESOURCE_FORMAT_BINARY,
+                                    "Texture", static_cast<uint32_t>(Fast::ResourceType::Texture), 2);
     loader->RegisterResourceFactory(std::make_shared<Fast::ResourceFactoryBinaryVertexV0>(), RESOURCE_FORMAT_BINARY,
                                     "Vertex", static_cast<uint32_t>(Fast::ResourceType::Vertex), 0);
     loader->RegisterResourceFactory(std::make_shared<Fast::ResourceFactoryXMLVertexV0>(), RESOURCE_FORMAT_XML, "Vertex",

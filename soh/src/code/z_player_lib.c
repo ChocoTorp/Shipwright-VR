@@ -1577,6 +1577,13 @@ s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex,
                 mirror = !leftHanded && CVarGetInteger("gVrHandMirrorShield", 1);
             }
             VR_SetHandScale(this->actor.scale.x); // fold Link's model scale into the live hand matrix
+            // QuestShip: shrink the hand mesh only while this hand is empty (open or fist); a hand
+            // holding something is drawn as one hand+item mesh, which must keep its size.
+            VR_SetHandMeshScaled(vrHand, (limbIndex == PLAYER_LIMB_L_HAND)
+                                             ? (this->leftHandType == PLAYER_MODELTYPE_LH_OPEN ||
+                                                this->leftHandType == PLAYER_MODELTYPE_LH_CLOSED)
+                                             : (this->rightHandType == PLAYER_MODELTYPE_RH_OPEN ||
+                                                this->rightHandType == PLAYER_MODELTYPE_RH_CLOSED));
             VR_SetHandMirror(vrHand, mirror);
             MtxF handMtx;
             if (VR_GetHandMatrix(vrHand, handMtx.mf)) {
