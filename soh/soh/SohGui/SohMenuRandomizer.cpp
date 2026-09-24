@@ -1,3 +1,4 @@
+#include <sstream>
 #include <unordered_set>
 #include "SohMenu.h"
 #include "soh/Enhancements/enhancementTypes.h"

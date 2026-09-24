@@ -42,6 +42,8 @@
 #define SYSTEM_HEAP_SIZE (1024 * 1024 * 4)
 
 #ifdef __cplusplus
+// QuestShip: extern "C++" so this still compiles when z64.h is included inside extern "C" (clang is strict, MSVC isn't)
+extern "C++" {
 namespace LUS
 {
     class IResource;
@@ -51,6 +53,7 @@ namespace Fast {
     class DisplayList;
 };
 #include <memory>
+}
 #endif
 
 #define SCREEN_WIDTH  320

@@ -7,6 +7,16 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "UIWidgets.hpp"
 #include <ship/controller/controldeck/ControlDeck.h>
+#include <algorithm>
+#include <spdlog/fmt/fmt.h>
+#if defined(__ANDROID__)
+#include <jni.h>
+#include <SDL2/SDL.h>
+#endif
+
+#ifndef ANDROID_APP_VERSION_NAME
+#define ANDROID_APP_VERSION_NAME "unknown"
+#endif
 
 extern "C" {
 #include "include/z64audio.h"
@@ -58,6 +68,95 @@ static const std::map<int32_t, const char*> bootSequenceLabels = {
     { BOOTSEQUENCE_FILESELECT, "File Select" }, { BOOTSEQUENCE_DEBUGWARPSCREEN, "Debug Warp Screen" },
     { BOOTSEQUENCE_WARPPOINT, "Warp Point" },
 };
+
+#if defined(__ANDROID__)
+static const std::map<int32_t, const char*> touchFaceButtonLayoutMap = {
+    { 0, "ABXY (Nintendo)" },
+    { 1, "BAYX (Xbox)" },
+    { 2, "GC Layout" },
+};
+
+static void SetAndroidTouchControlsDisabled(bool disabled) {
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (env == nullptr || activity == nullptr) {
+        return;
+    }
+
+    jclass activityClass = env->GetObjectClass(activity);
+    if (activityClass == nullptr) {
+        env->DeleteLocalRef(activity);
+        return;
+    }
+
+    jmethodID method = env->GetMethodID(activityClass, "setTouchControlsDisabledFromNative", "(Z)V");
+    if (method != nullptr) {
+        env->CallVoidMethod(activity, method, disabled ? JNI_TRUE : JNI_FALSE);
+    }
+
+    env->DeleteLocalRef(activityClass);
+    env->DeleteLocalRef(activity);
+}
+
+static void SetAndroidTouchFaceButtonLayout(int32_t layout) {
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (env == nullptr || activity == nullptr) {
+        return;
+    }
+
+    jclass activityClass = env->GetObjectClass(activity);
+    if (activityClass != nullptr) {
+        jmethodID method =
+            env->GetMethodID(activityClass, "setTouchFaceButtonLayoutFromNative", "(I)V");
+        if (method != nullptr) {
+            env->CallVoidMethod(activity, method, static_cast<jint>(layout));
+        }
+        env->DeleteLocalRef(activityClass);
+    }
+    env->DeleteLocalRef(activity);
+}
+
+static void SetAndroidTouchLeftStickFloating(bool floating) {
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (env == nullptr || activity == nullptr) {
+        return;
+    }
+
+    jclass activityClass = env->GetObjectClass(activity);
+    if (activityClass != nullptr) {
+        jmethodID method = env->GetMethodID(activityClass, "setTouchLeftStickFloatingFromNative", "(Z)V");
+        if (method != nullptr) {
+            env->CallVoidMethod(activity, method, floating ? JNI_TRUE : JNI_FALSE);
+        }
+        env->DeleteLocalRef(activityClass);
+    }
+    env->DeleteLocalRef(activity);
+}
+
+static void OpenAndroidDataFolderChooser() {
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (env == nullptr || activity == nullptr) {
+        return;
+    }
+
+    jclass activityClass = env->GetObjectClass(activity);
+    if (activityClass == nullptr) {
+        env->DeleteLocalRef(activity);
+        return;
+    }
+
+    jmethodID method = env->GetMethodID(activityClass, "changeDataFolderFromNative", "()V");
+    if (method != nullptr) {
+        env->CallVoidMethod(activity, method);
+    }
+
+    env->DeleteLocalRef(activityClass);
+    env->DeleteLocalRef(activity);
+}
+#endif
 
 const char* GetGameVersionString(uint32_t index) {
     uint32_t gameVersion = ResourceMgr_GetGameVersion(index);
@@ -192,6 +291,19 @@ void SohMenu::AddMenuSettings() {
     AddWidget(path, "Reset Button Combination:", WIDGET_CVAR_BTN_SELECTOR)
         .CVar("gSettings.ResetBtn")
         .Options(BtnSelectorOptions().DefaultValue(BTN_CUSTOM_MODIFIER2));
+#if defined(__ANDROID__)
+    AddWidget(path, "Current Data Folder", WIDGET_CUSTOM).CustomFunction([](WidgetInfo& info) {
+        std::string dataFolderPath = Ship::Context::GetAppDirectoryPath();
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 0.7f), "Current Data Folder");
+        ImGui::PushTextWrapPos(ImGui::GetContentRegionAvail().x);
+        ImGui::TextUnformatted(dataFolderPath.c_str());
+        ImGui::PopTextWrapPos();
+    });
+    AddWidget(path, "Change Data Folder", WIDGET_BUTTON)
+        .RaceDisable(false)
+        .Callback([](WidgetInfo& info) { OpenAndroidDataFolderChooser(); })
+        .Options(ButtonOptions().Tooltip("Choose where Android stores saves, mods, settings, and support files."));
+#else
     AddWidget(path, "Open App Files Folder", WIDGET_BUTTON)
         .RaceDisable(false)
         .Callback([](WidgetInfo& info) {
@@ -199,6 +311,7 @@ void SohMenu::AddMenuSettings() {
             SDL_OpenURL(std::string("file:///" + std::filesystem::absolute(filesPath).string()).c_str());
         })
         .Options(ButtonOptions().Tooltip("Opens the folder that contains the save and mods folders, etc."));
+#endif
 
     AddWidget(path, "Boot", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Boot Sequence", WIDGET_CVAR_COMBOBOX)
@@ -272,11 +385,12 @@ void SohMenu::AddMenuSettings() {
 
     AddWidget(path, "About", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Ship Of Harkinian", WIDGET_TEXT);
+#if defined(__ANDROID__)
+    AddWidget(path, "Android App Version", WIDGET_TEXT);
+    AddWidget(path, ANDROID_APP_VERSION_NAME, WIDGET_TEXT);
+#endif
     if (gGitCommitTag[0] != 0) {
         AddWidget(path, gBuildVersion, WIDGET_TEXT);
-    } else {
-        AddWidget(path, ("Branch: " + std::string(gGitBranch)), WIDGET_TEXT);
-        AddWidget(path, ("Commit: " + std::string(gGitCommitHash)), WIDGET_TEXT);
     }
     for (uint32_t i = 0; i < ResourceMgr_GetNumGameVersions(); i++) {
         AddWidget(path, GetGameVersionString(i), WIDGET_TEXT);
@@ -456,6 +570,46 @@ void SohMenu::AddMenuSettings() {
         .WindowName("Configure Controller")
         .HideInSearch(true)
         .Options(WindowButtonOptions().Tooltip("Enables the separate Bindings Window."));
+
+#if defined(__ANDROID__)
+    // Touch Controls
+    path.sidebarName = "Touch Controls";
+    path.column = SECTION_COLUMN_1;
+    AddSidebarEntry("Settings", path.sidebarName, 2);
+    AddWidget(path, "Touch Face Buttons", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_SETTING("TouchControls.FaceButtonLayout"))
+        .RaceDisable(false)
+        .Callback([](WidgetInfo& info) {
+            SetAndroidTouchFaceButtonLayout(
+                CVarGetInteger(CVAR_SETTING("TouchControls.FaceButtonLayout"), 0));
+        })
+        .Options(ComboboxOptions()
+                     .ComboMap(touchFaceButtonLayoutMap)
+                     .DefaultIndex(0)
+                     .Tooltip("Choose ABXY (Nintendo), BAYX (Xbox), or GC Layout touch-button placement."));
+    AddWidget(path, "Floating Left Stick", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("TouchControls.FloatingLeftStick"))
+        .RaceDisable(false)
+        .Callback([](WidgetInfo& info) {
+            SetAndroidTouchLeftStickFloating(
+                CVarGetInteger(CVAR_SETTING("TouchControls.FloatingLeftStick"), 1) != 0);
+        })
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "When disabled, the left touch stick stays fixed in the lower-left corner."));
+    AddWidget(path, "Disable Touch Controls", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("TouchControls.Disabled"))
+        .RaceDisable(false)
+        .Callback([](WidgetInfo& info) {
+            SetAndroidTouchControlsDisabled(CVarGetInteger(CVAR_SETTING("TouchControls.Disabled"), 0) != 0);
+        })
+        .Options(CheckboxOptions().Tooltip("Hides the Android touch controls and eye button."));
+
+    // Keep Android's persisted overlay state aligned with the native CVars after relaunches.
+    SetAndroidTouchFaceButtonLayout(CVarGetInteger(CVAR_SETTING("TouchControls.FaceButtonLayout"), 0));
+    SetAndroidTouchLeftStickFloating(
+        CVarGetInteger(CVAR_SETTING("TouchControls.FloatingLeftStick"), 1) != 0);
+    SetAndroidTouchControlsDisabled(CVarGetInteger(CVAR_SETTING("TouchControls.Disabled"), 0) != 0);
+#endif
 
     // Input Viewer
     path.sidebarName = "Input Viewer";

@@ -1,3 +1,5 @@
+#include <climits>
+#include <cstdlib>
 #include "SohMenu.h"
 #include "SohGui.hpp"
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -434,10 +436,17 @@ static void VrPhysLogControl(WidgetInfo& info) {
             const char* path = "vr_phys_log.csv";
             const int32_t n = VR_PhysLogWrite(path);
             if (n > 0) {
+#ifdef _WIN32
                 char abs[MAX_PATH] = "";
                 if (_fullpath(abs, path, sizeof(abs)) == nullptr) {
                     snprintf(abs, sizeof(abs), "%s", path);
                 }
+#else
+                char abs[PATH_MAX] = "";
+                if (realpath(path, abs) == nullptr) {
+                    snprintf(abs, sizeof(abs), "%s", path);
+                }
+#endif
                 snprintf(sStatus, sizeof(sStatus), "Wrote %d samples to:\n%s", n, abs);
             } else if (n == 0) {
                 snprintf(sStatus, sizeof(sStatus), "Nothing captured (was the sword in hand, "
@@ -455,6 +464,13 @@ static void VrPhysLogControl(WidgetInfo& info) {
         ImGui::TextUnformatted(sStatus);
     }
 }
+
+// QuestShip: upstream calls this but never committed its definition (it prompts PC users to
+// switch the renderer to D3D11). On Quest VR renders through GLES, so there is nothing to swap.
+namespace SohGui {
+void PromptVrDx11SwapIfNeeded() {
+}
+} // namespace SohGui
 
 void SohMenu::AddMenuVRSettings() {
     AddMenuEntry("VR Settings", CVAR_SETTING("Menu.VRSettingsSidebarSection"));

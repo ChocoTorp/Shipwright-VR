@@ -11,6 +11,9 @@
 #ifndef __WIIU__
 #include <ship/controller/controldevice/controller/mapping/sdl/SDLAxisDirectionToButtonMapping.h>
 #endif
+#ifdef __ANDROID__
+#include <ship/port/mobile/MobileImpl.h>
+#endif
 
 #define SCALE_IMGUI_SIZE(value) ((value / 13.0f) * ImGui::GetFontSize())
 

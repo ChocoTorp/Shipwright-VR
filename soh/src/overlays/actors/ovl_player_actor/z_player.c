@@ -35,9 +35,17 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/savestate_serialize.h"
 
+
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+
+#ifdef __ANDROID__
+extern bool Ship_Mobile_HasTouchCameraInput(void);
+extern void Ship_Mobile_HandleTouchCamera(f32* camX, f32* camY);
+extern bool Ship_Mobile_IsTouchItemButtonPulse(void);
+extern bool Ship_Mobile_IsItemButtonHeld(void);
+#endif
 
 // Some player animations are played at this reduced speed, for reasons yet unclear.
 // This is called "adjusted" for now.
@@ -2540,27 +2548,31 @@ s32 Player_ItemIsItemAction(s32 item1, s32 itemAction) {
 }
 
 s32 Player_GetItemOnButton(PlayState* play, s32 index) {
+    s32 item = ITEM_NONE;
+
     if (index >= ((CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0) != 0) ? 8 : 4)) {
         return ITEM_NONE;
     } else if (play->bombchuBowlingStatus != 0) {
         return (play->bombchuBowlingStatus > 0) ? ITEM_BOMBCHU : ITEM_NONE;
     } else if (index == 0) {
-        return B_BTN_ITEM;
+        item = B_BTN_ITEM;
     } else if (index == 1) {
-        return C_BTN_ITEM(0);
+        item = C_BTN_ITEM(0);
     } else if (index == 2) {
-        return C_BTN_ITEM(1);
+        item = C_BTN_ITEM(1);
     } else if (index == 3) {
-        return C_BTN_ITEM(2);
+        item = C_BTN_ITEM(2);
     } else if (index == 4) {
-        return DPAD_ITEM(0);
+        item = DPAD_ITEM(0);
     } else if (index == 5) {
-        return DPAD_ITEM(1);
+        item = DPAD_ITEM(1);
     } else if (index == 6) {
-        return DPAD_ITEM(2);
+        item = DPAD_ITEM(2);
     } else if (index == 7) {
-        return DPAD_ITEM(3);
+        item = DPAD_ITEM(3);
     }
+
+    return item;
 }
 
 /**
@@ -2598,7 +2610,7 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
             bool hasOnDpad = false;
             if (CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0) != 0) {
                 for (int buttonIndex = 0; buttonIndex < 4; buttonIndex++) {
-                    hasOnDpad |= Player_ItemIsInUse(this, DPAD_ITEM(buttonIndex));
+                    hasOnDpad |= Player_ItemIsInUse(this, Player_GetItemOnButton(play, buttonIndex + 4));
                 }
             }
             if (!Player_ItemIsInUse(this, B_BTN_ITEM) && !Player_ItemIsInUse(this, C_BTN_ITEM(0)) &&
@@ -2610,6 +2622,12 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
             }
         }
 
+#ifdef __ANDROID__
+        if (Ship_Mobile_IsTouchItemButtonPulse() && this->heldItemButton > 0 &&
+            this->heldItemButton < (s8)ARRAY_COUNT(sItemButtons)) {
+            sControlInput->press.button |= sItemButtons[this->heldItemButton];
+        }
+#endif
         for (i = 0; i < ARRAY_COUNT(sItemButtons); i++) {
             if (CHECK_BTN_ALL(sControlInput->press.button, sItemButtons[i])) {
                 break;
@@ -2631,6 +2649,11 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
             if ((item < ITEM_NONE_FE) && (Player_ItemToItemAction(item) == this->heldItemAction)) {
                 sHeldItemButtonIsHeldDown = true;
             }
+#ifdef __ANDROID__
+            if (Ship_Mobile_IsItemButtonHeld()) {
+                sHeldItemButtonIsHeldDown = true;
+            }
+#endif
         } else if (GameInteractor_Should(VB_CHANGE_HELD_ITEM_AND_USE_ITEM, true, item)) {
             this->heldItemButton = i;
             Player_UseItem(play, this, item);
@@ -13153,6 +13176,11 @@ s16 func_8084ABD8(PlayState* play, Player* this, s32 arg2, s16 arg3) {
 
     GameInteractor_ExecuteOnPlayerFirstPersonControl(this);
 
+#ifdef __ANDROID__
+    f32 touchCamX = 0.0f, touchCamY = 0.0f;
+    Ship_Mobile_HandleTouchCamera(&touchCamX, &touchCamY);
+#endif
+
     if (!func_8002DD78(this) && !func_808334B4(this) && (arg2 == 0)) { // First person without weapon
         // Y Axis
         if (!(CVarGetInteger(CVAR_SETTING("MoveInFirstPerson"), 0) &&
@@ -13204,6 +13232,9 @@ s16 func_8084ABD8(PlayState* play, Player* this, s32 arg2, s16 arg3) {
         if (fabsf(sControlInput->cur.gyro_x) > 0.01f) {
             temp3 += (-sControlInput->cur.gyro_x) * 750.0f;
         }
+#ifdef __ANDROID__
+        temp3 += (s32)(touchCamY * -5.0f * invertYAxisMulti * yAxisMulti);
+#endif
         this->actor.focus.rot.x += temp3;
         this->actor.focus.rot.x = CLAMP(this->actor.focus.rot.x, -temp1, temp1);
 
@@ -13225,6 +13256,9 @@ s16 func_8084ABD8(PlayState* play, Player* this, s32 arg2, s16 arg3) {
         if (fabsf(sControlInput->cur.gyro_y) > 0.01f) {
             temp3 += (sControlInput->cur.gyro_y) * 750.0f * invertXAxisMulti;
         }
+#ifdef __ANDROID__
+        temp3 += (s32)(touchCamX * -5.0f * invertXAxisMulti * xAxisMulti);
+#endif
         temp2 += temp3;
         this->actor.focus.rot.y = CLAMP(temp2, -temp1, temp1) + this->actor.shape.rot.y;
     }

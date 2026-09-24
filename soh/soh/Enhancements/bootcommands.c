@@ -10,7 +10,12 @@ void BootCommands_Init() {
     CVarClear(CVAR_GENERAL("OnFileSelectNameEntry")); // Clear when soh is killed on the file name entry page
     CVarClear(CVAR_GENERAL("BetterDebugWarpScreenMQMode"));
     CVarClear(CVAR_GENERAL("BetterDebugWarpScreenMQModeScene"));
-#if defined(__SWITCH__) || defined(__WIIU__)
-    CVarRegisterInteger(CVAR_IMGUI_CONTROLLER_NAV, 1); // always enable controller nav on switch/wii u
+#if defined(__SWITCH__) || defined(__WIIU__) || defined(__ANDROID__)
+    CVarRegisterInteger(CVAR_IMGUI_CONTROLLER_NAV, 1); // always enable controller nav on switch/wii u/android
+#endif
+#if defined(__ANDROID__)
+    CVarRegisterInteger(CVAR_SETTING("TouchControls.Disabled"), 0);
+    CVarRegisterInteger(CVAR_SETTING("TouchControls.FaceButtonLayout"), 0);
+    CVarRegisterInteger(CVAR_SETTING("TouchControls.FloatingLeftStick"), 1);
 #endif
 }
