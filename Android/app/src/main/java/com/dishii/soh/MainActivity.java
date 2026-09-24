@@ -77,7 +77,7 @@ public class MainActivity extends SDLActivity{
     private static final int TOUCH_FACE_BUTTON_LAYOUT_GAMECUBE = 2;
     private static final String SUPPORT_FILES_VERSION_MARKER = ".android_support_files_version";
     // Bump this only when bundled Android support assets or archive layout changes.
-    private static final String SUPPORT_FILES_VERSION = "questship-OOT_4";
+    private static final String SUPPORT_FILES_VERSION = "questship-OOT_6";
     private AlertDialog dataRootMigrationDialog;
     private AlertDialog setupProgressDialog;
 
@@ -139,8 +139,9 @@ public class MainActivity extends SDLActivity{
         deleteIfExists(new File(targetRootFolder, "oot.otr"));
         deleteIfExists(new File(targetRootFolder, "oot-mq.otr"));
         deleteIfExists(new File(targetRootFolder, "soh.o2r"));
-        deleteIfExists(new File(targetRootFolder, "oot.o2r"));
-        deleteIfExists(new File(targetRootFolder, "oot-mq.o2r"));
+        // QuestShip: keep oot.o2r / oot-mq.o2r (built from the player's ROM). Re-extracting needs
+        // ImGui prompts + a file picker that can't be seen in immersive VR; the game already checks
+        // their version itself and asks to regenerate when they're really outdated.
         deleteRecursiveIfExists(new File(targetRootFolder, "assets"));
         deleteIfExists(getSupportFilesMarkerFile(targetRootFolder));
     }
@@ -527,8 +528,12 @@ public class MainActivity extends SDLActivity{
             return;
         }
 
-        doVersionCheck();
-        checkAndSetupFiles();
+        // QuestShip: off the UI thread. Deleting the old assets folder takes ~13 s on Quest, and an
+        // immersive activity gets an ANR for that. Dialogs already post themselves to the UI thread.
+        Executors.newSingleThreadExecutor().execute(() -> {
+            doVersionCheck();
+            checkAndSetupFiles();
+        });
     }
 
     private boolean ensureTargetRootFolderReady(File targetRootFolder) {

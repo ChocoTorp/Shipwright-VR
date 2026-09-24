@@ -15,6 +15,7 @@ android {
     compileSdkVersion 31
     buildFeatures {
         buildConfig = true
+        prefab = true // QuestShip: OpenXR loader headers + lib for CMake
     }
     defaultConfig {
         if (buildAsApplication) {
@@ -108,6 +109,7 @@ dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation 'androidx.core:core:1.7.0' // Use the latest version
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'org.khronos.openxr:openxr_loader_for_android:1.1.63' // QuestShip: Khronos OpenXR loader (Quest)
 }
 
 task wrapper(type: Wrapper) {
