@@ -1928,7 +1928,6 @@ void RunCommands(Gfx* Commands, int time, int step, int denom, int count) {
 
     auto intp = wnd->GetInterpreterWeak().lock().get();
     intp->mInterpolationIndex = 0;
-    Fast::Interpreter::ClearResourceLookupCache(); // QuestShip: new game tick
 
     UIWidgets::Colors themeColor =
         static_cast<UIWidgets::Colors>(CVarGetInteger(CVAR_SETTING("Menu.Theme"), UIWidgets::Colors::LightBlue));
