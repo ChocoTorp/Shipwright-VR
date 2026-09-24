@@ -127,6 +127,10 @@ void VrItemThrow_Reset(void);
 bool VrItemThrow_PreviewPosition(float* position);
 bool VrItemThrow_GripConsumed(int32_t hand, uint16_t mask);
 void VrItemThrow_UpdateCarryPose(struct Player* player);
+// QuestShip: draw a Deku Nut projectile as the 3D get-item nut (held: welded to the hand; thrown:
+// tumbling). False = not handled, draw vanilla.
+bool VrItemThrow_DrawNutModel(struct Actor* actor, struct PlayState* play);
+int VrArchery_StringHand(void);
 bool Player_VrGrabItem(struct PlayState* play, struct Player* player);
 void Player_VrReleaseItem(struct PlayState* play, struct Player* player, const float* velocity);
 uint16_t VrItemSelect_TriggerItemMask(int32_t vrHand);

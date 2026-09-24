@@ -8,6 +8,9 @@ extern PlayState* gPlayState;
 void Player_UseItem(PlayState* play, Player* player, s32 item);
 s8 Player_ItemToItemAction(s32 item);
 s32 Player_GetItemOnButton(PlayState* play, s32 index);
+// OTRGlobals.cpp (declared C-only in OTRGlobals.h): item -> GetItem model lookup.
+GetItemID RetrieveGetItemIDFromItemID(ItemID itemID);
+GetItemEntry ItemTable_Retrieve(int16_t getItemID);
 }
 
 #include "VrCombat.h"
@@ -69,6 +72,11 @@ Vec3f sAnchorOff; // hand-at-hold-start relative to Link's BODY: the compass rid
                   // the player keeps moving with the stick (or walks physically) mid-hold, and
                   // locomotion never reads as a flick — only hand motion relative to the body.
 Vec3f sHeadRight; // camera right captured at open: stable targets, "left is left as you see it"
+// QuestShip: selection + compass live in PHYSICAL space (raw tracking, meters). Stick locomotion,
+// snap/smooth turning and the 20 Hz game-tick vs render-rate anchor mismatch can't move them, so
+// walking while the compass is open no longer reads as a flick.
+float sAnchorM[3]; // hand position at hold start
+float sRightM[3];  // head right at hold start, horizontal
 
 // No grace window and no synthetic press: selection is distinct from activation.
 VrItemSelectionState sSelection;
@@ -151,6 +159,10 @@ bool SwapChordHeld() {
     const uint16_t mask = SwapMask();
     return mask != 0 && (VR_GetControllerButton(VR_HAND_LEFT) & mask) != 0 &&
            (VR_GetControllerButton(VR_HAND_RIGHT) & mask) != 0;
+}
+
+float PickThresholdMeters() {
+    return CVarGetFloat("gVrItemSelDistance", 5.0f) * 0.01f; // cm -> m
 }
 
 float PickThresholdUnits() {
@@ -311,7 +323,8 @@ void ItemSelectTick() {
             float fwd[3];
             float up[3];
             const int hand = SelectorHand();
-            if (VR_GetHandPose(hand, pos, quat)) {
+            float handM[3];
+            if (VR_GetHandPose(hand, pos, quat) && VR_GetHandPositionPhysical(hand, handM)) {
                 VR_GetCameraPose(eye, fwd, up);
                 // camera right = fwd x up, flattened to the horizon so "left/right" stays
                 // level even when looking up or down.
@@ -328,6 +341,10 @@ void ItemSelectTick() {
                 sAnchorOff = { pos[0] - player->actor.world.pos.x, pos[1] - player->actor.world.pos.y,
                                pos[2] - player->actor.world.pos.z };
                 sHeadRight = right;
+                sAnchorM[0] = handM[0];
+                sAnchorM[1] = handM[1];
+                sAnchorM[2] = handM[2];
+                VR_GetHeadRightPhysical(sRightM);
                 sHand = hand;
                 sSector = SEC_CENTER;
                 sOpen = true;
@@ -352,16 +369,16 @@ void ItemSelectTick() {
         sAnchor = { player->actor.world.pos.x + sAnchorOff.x, player->actor.world.pos.y + sAnchorOff.y,
                     player->actor.world.pos.z + sAnchorOff.z };
     }
-    float pos[3];
-    float quat[4];
-    if (VR_GetHandPose(sHand, pos, quat)) {
-        const float dxw = pos[0] - sAnchor.x;
-        const float dyw = pos[1] - sAnchor.y;
-        const float dzw = pos[2] - sAnchor.z;
-        const float lat = dxw * sHeadRight.x + dzw * sHeadRight.z; // camera-right component
-        const float vert = dyw;                                    // world up
+    float handM[3];
+    if (VR_GetHandPositionPhysical(sHand, handM)) {
+        // Physical hand displacement since the hold started (meters): only the real hand counts.
+        const float dx = handM[0] - sAnchorM[0];
+        const float dy = handM[1] - sAnchorM[1];
+        const float dz = handM[2] - sAnchorM[2];
+        const float lat = dx * sRightM[0] + dz * sRightM[2]; // head-right at open
+        const float vert = dy;                               // up
         const float r = sqrtf(lat * lat + vert * vert);
-        const float th = PickThresholdUnits();
+        const float th = PickThresholdMeters();
 
         int newSector = sSector;
         if (sSector == SEC_CENTER) {
@@ -430,7 +447,147 @@ int PushBillboardVtx(const Vec3f& at, const Vec3f& camRight, const Vec3f& camUp,
     return base;
 }
 
+// QuestShip: pin every runtime LOAD matrix a GetItem draw emitted in [from, to) to the compass's
+// physical anchor (+ offset, + spin), so the mini model tracks at headset rate. Shared matrices
+// (gMtxClear, the scene billboard) are skipped: re-pinning those would move everything using them.
+void PinEmittedMatrices(Gfx* from, Gfx* to, const float anchorM[3], const float offset[3], float spinDps) {
+    for (Gfx* g = from; g < to; ++g) {
+        if (((g->words.w0 >> 24) & 0xFF) != G_MTX) {
+            continue;
+        }
+        const uint32_t params = (uint32_t)(g->words.w0 & 0xFF) ^ G_MTX_PUSH;
+        if (!(params & G_MTX_LOAD) || (params & G_MTX_PROJECTION)) {
+            continue;
+        }
+        Mtx* m = (Mtx*)g->words.w1;
+        if (m == NULL || m == &gMtxClear || m == gPlayState->billboardMtx) {
+            continue;
+        }
+        MtxF mf;
+        Matrix_MtxToMtxF(m, &mf);
+        VR_RegisterSpaceMatrix(m, anchorM, offset, &mf.mf[0][0], spinDps);
+    }
+}
+
 } // namespace
+
+// QuestShip: the open compass, locked in physical space where the hand was when the hold started.
+// Items show as small spinning 3D models (the same GetItem models Link holds overhead); items
+// without a model, empty slots and the center marker stay flat billboards. Everything rides one
+// space-locked base matrix, so nothing steps at the 20 Hz game rate or drifts while moving.
+extern "C" void VrItemSelect_DrawOpenCompass(void) {
+    Gfx* p = sSelDl;
+    sSelVtxUsed = 0;
+
+    // Physical axes: billboards face along the head direction captured at open.
+    const Vec3f camRight = { sRightM[0], 0.0f, sRightM[2] };
+    const Vec3f camUp = { 0.0f, 1.0f, 0.0f };
+
+    const float th = PickThresholdUnits();
+    const float ringR = fmaxf(th * 1.5f, 4.5f);
+    const float iconHs = fmaxf(th * 0.55f, 1.6f);
+    const bool models = CVarGetInteger("gVrItemSelModels", 1) != 0;
+    const float modelScale = CVarGetFloat("gVrItemSelModelScale", 0.04f); // 20% of the overhead get-item size (0.2)
+
+    struct SelTarget {
+        int sector;
+        Vec3f at; // game units, physical axes, relative to the anchor
+        u8 item;
+    };
+    const SelTarget targets[4] = {
+        { SEC_UP, { 0.0f, ringR, 0.0f }, gSaveContext.equips.buttonItems[0] },
+        { SEC_DOWN, { 0.0f, -ringR, 0.0f }, gSaveContext.equips.buttonItems[2] },
+        { SEC_LEFT, { -camRight.x * ringR, 0.0f, -camRight.z * ringR }, gSaveContext.equips.buttonItems[1] },
+        { SEC_RIGHT, { camRight.x * ringR, 0.0f, camRight.z * ringR }, gSaveContext.equips.buttonItems[3] },
+    };
+
+    static const float kIdentity[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+    static const float kZero[3] = { 0.0f, 0.0f, 0.0f };
+
+    OPEN_DISPS(gPlayState->state.gfxCtx);
+
+    Matrix_Translate(0.0f, 0.0f, 0.0f, MTXMODE_NEW);
+    Mtx* base = MATRIX_NEWMTX(gPlayState->state.gfxCtx);
+    VR_RegisterSpaceMatrix(base, sAnchorM, kZero, kIdentity, 0.0f);
+
+    gSPMatrix(p++, base, G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
+    gDPPipeSync(p++);
+    gDPSetCycleType(p++, G_CYC_1CYCLE);
+    gDPSetRenderMode(p++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+    gDPSetTextureFilter(p++, G_TF_BILERP);
+    gSPClearGeometryMode(p++, G_CULL_BOTH | G_LIGHTING);
+    gSPTexture(p++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
+
+    for (int i = 0; i < 4; i++) {
+        const bool selected = (sSector == targets[i].sector);
+        const u8 item = targets[i].item;
+
+        // 3D model when the item has a GetItem model.
+        if (models && item < 158) {
+            const GetItemID gi = RetrieveGetItemIDFromItemID((ItemID)item);
+            if (gi != GI_NONE) {
+                const GetItemEntry entry = ItemTable_Retrieve(gi);
+                const float sc = selected ? modelScale * 1.3f : modelScale; // selected = +30%
+                const float offset[3] = { targets[i].at.x, targets[i].at.y, targets[i].at.z };
+                Gfx* opaStart = POLY_OPA_DISP;
+                Gfx* xluStart = POLY_XLU_DISP;
+                Matrix_Translate(0.0f, 0.0f, 0.0f, MTXMODE_NEW);
+                Matrix_Scale(sc, sc, sc, MTXMODE_APPLY);
+                // Display-only: keep the mini models out of physical combat's visual-mesh
+                // collision, or the held weapon bumps into the compass.
+                VrCombat_MeshMaskPush(gPlayState->state.gfxCtx);
+                GetItemEntry_Draw(gPlayState, entry);
+                VrCombat_MeshMaskPop(gPlayState->state.gfxCtx);
+                const float spin = selected ? 150.0f : 45.0f;
+                PinEmittedMatrices(opaStart, POLY_OPA_DISP, sAnchorM, offset, spin);
+                PinEmittedMatrices(xluStart, POLY_XLU_DISP, sAnchorM, offset, spin);
+                continue;
+            }
+        }
+
+        // Flat icon (or dim diamond for an empty slot).
+        const float hs = selected ? iconHs * 1.35f : iconHs;
+        const int vbase = PushBillboardVtx(targets[i].at, camRight, camUp, hs);
+        if (vbase < 0) {
+            break;
+        }
+        if (item < 158) {
+            gDPSetCombineMode(p++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
+            if (selected) {
+                gDPSetPrimColor(p++, 0, 0, 255, 255, 255, 255);
+            } else {
+                gDPSetPrimColor(p++, 0, 0, 165, 165, 165, 185);
+            }
+            gDPLoadTextureBlock(p++, gItemIcons[item], G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
+                                G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, 5, 5, G_TX_NOLOD,
+                                G_TX_NOLOD);
+        } else {
+            gDPSetCombineMode(p++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
+            gDPSetPrimColor(p++, 0, 0, 120, 120, 120, selected ? 160 : 90);
+        }
+        gSPVertex(p++, (uintptr_t)&sSelVtx[vbase], 4, 0);
+        gSP2Triangles(p++, 0, 1, 2, 0, 2, 1, 3, 0);
+    }
+
+    // Center marker at the anchor (empty hands), brighter while it is the pick.
+    const int cbase = PushBillboardVtx({ 0.0f, 0.0f, 0.0f }, camRight, camUp,
+                                       (sSector == SEC_CENTER) ? iconHs * 0.55f : iconHs * 0.35f);
+    if (cbase >= 0) {
+        gDPSetCombineMode(p++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
+        if (sSector == SEC_CENTER) {
+            gDPSetPrimColor(p++, 0, 0, 255, 250, 210, 235);
+        } else {
+            gDPSetPrimColor(p++, 0, 0, 190, 190, 190, 130);
+        }
+        gSPVertex(p++, (uintptr_t)&sSelVtx[cbase], 4, 0);
+        gSP2Triangles(p++, 0, 1, 2, 0, 2, 1, 3, 0);
+    }
+
+    gSPEndDisplayList(p++);
+    gSPDisplayList(POLY_XLU_DISP++, sSelDl);
+
+    CLOSE_DISPS(gPlayState->state.gfxCtx);
+}
 
 // extern "C" linkage is load-bearing: OPEN_DISPS/CLOSE_DISPS re-declare the
 // FrameInterpolation_Record* functions at BLOCK scope, and a block-scope declaration inherits
@@ -438,6 +595,10 @@ int PushBillboardVtx(const Vec3f& at, const Vec3f& camRight, const Vec3f& camUp,
 // to link against the C definitions (same note as VrCombat_DrawDebugOverlay).
 extern "C" void VrItemSelect_Draw(void) {
     if (gPlayState == NULL) {
+        return;
+    }
+    if (sOpen) {
+        VrItemSelect_DrawOpenCompass();
         return;
     }
     Player* player = GET_PLAYER(gPlayState);
@@ -449,8 +610,32 @@ extern "C" void VrItemSelect_Draw(void) {
             (player->modelGroup != PLAYER_MODELGROUP_DEFAULT &&
              player->heldItemAction != PLAYER_IA_BOMB && player->heldItemAction != PLAYER_IA_BOMBCHU)) return;
         float position[3], rotation[4];
-        if (!VrItemThrow_PreviewPosition(position) && !VR_GetHandPose(SwordHand(), position, rotation)) return;
+        const bool atPreview = VrItemThrow_PreviewPosition(position);
+        if (!atPreview && !VR_GetHandPose(SwordHand(), position, rotation)) return;
         sAnchor = { position[0], position[1], position[2] };
+        // QuestShip: a Deku Nut waiting to be grabbed is the 3D nut, gently turning, not an icon.
+        // Anchored in PHYSICAL space (same spot VrItemThrow_PreviewPosition computes: 0.4 m ahead
+        // on the level, 0.25 m below the head) so it rides with the headset at render rate
+        // instead of trailing at the 20 Hz game rate while walking.
+        float headM[3], fwdM[3];
+        if (atPreview && player->heldItemAction == PLAYER_IA_DEKU_NUT && CVarGetInteger("gVrNutModel", 1) &&
+            VR_GetHeadPosePhysical(headM, fwdM)) {
+            const float anchorM[3] = { headM[0] + fwdM[0] * 0.4f, headM[1] - 0.25f, headM[2] + fwdM[2] * 0.4f };
+            static const float kZero[3] = { 0.0f, 0.0f, 0.0f };
+            const float sc = CVarGetFloat("gVrNutModelScale", 0.06f);
+            OPEN_DISPS(gPlayState->state.gfxCtx);
+            VrCombat_MeshMaskPush(gPlayState->state.gfxCtx);
+            Gfx* opaStart = POLY_OPA_DISP;
+            Gfx* xluStart = POLY_XLU_DISP;
+            Matrix_Translate(0.0f, 0.0f, 0.0f, MTXMODE_NEW);
+            Matrix_Scale(sc, sc, sc, MTXMODE_APPLY);
+            GetItem_Draw(gPlayState, GID_NUTS);
+            PinEmittedMatrices(opaStart, POLY_OPA_DISP, anchorM, kZero, 40.0f);
+            PinEmittedMatrices(xluStart, POLY_XLU_DISP, anchorM, kZero, 40.0f);
+            VrCombat_MeshMaskPop(gPlayState->state.gfxCtx);
+            CLOSE_DISPS(gPlayState->state.gfxCtx);
+            return;
+        }
     }
 
     Gfx* p = sSelDl;

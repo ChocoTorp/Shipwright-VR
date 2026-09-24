@@ -324,7 +324,8 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
     // #region SOH [VR] Map the OpenXR controllers onto the N64 pad (port 0) so the headset controllers
     // are the default game controller everywhere — gameplay AND menus (this runs before
     // PadMgr_ProcessInputs, which derives press/rel). OR'd in, so keyboard/gamepad still work alongside.
-    if (VR_IsInitialized() && CVarGetInteger("gVrControllerInput", 1)) {
+    // QuestShip: while the in-headset settings menu is open it owns every controller input.
+    if (VR_IsInitialized() && CVarGetInteger("gVrControllerInput", 1) && !VR_MenuIsOpen()) {
         OSContPad* vrPad = &padMgr->pads[0];
         uint16_t vrL = VR_GetControllerButton(VR_HAND_LEFT);
         uint16_t vrR = VR_GetControllerButton(VR_HAND_RIGHT);
@@ -421,7 +422,10 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                     // chord suspends its inputs' bindings while fully held. While aiming a
                     // projectile (classic mode), the aim hand's trigger is the FIRE control and
                     // its binding is likewise suspended.
-                    if (VrItemSelect_ConsumesInput(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
+                    // QuestShip: left menu button = hold for the settings menu; its quick tap
+                    // arrives as START on release (VR_TakeStartTap below), never on press.
+                    if (VR_MenuConsumesButton(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
+                        VrItemSelect_ConsumesInput(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrItemSelect_TriggerConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrItemSelect_SwapConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrItemThrow_GripConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
@@ -488,6 +492,10 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                     }
                 }
             }
+        }
+
+        if (VR_TakeStartTap()) {
+            vrPad->button |= BTN_START; // quick tap of the left menu button (see above)
         }
 
         // Left thumbstick -> movement (control stick). Overrides only when actually pushed (deadzone),

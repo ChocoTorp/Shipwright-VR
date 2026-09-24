@@ -2,11 +2,15 @@ extern "C" {
 #include "z64.h"
 #include "macros.h"
 #include "functions.h"
+#include "variables.h" // gMtxClear
+#include "overlays/actors/ovl_En_Arrow/z_en_arrow.h" // ARROW_NUT
 extern PlayState* gPlayState;
 }
 #include "VrCombat.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <cmath>
+#include <cstring>
+#include <vr_interface.h>
 
 namespace {
 bool sGripPrev[2] = { true, true }; // require a fresh press on entry/reset
@@ -180,4 +184,86 @@ extern "C" void VrItemThrow_Tick(PlayState* play, Player* player) {
             }
         }
     }
+}
+
+// ---- QuestShip: the Deku Nut (and slingshot Deku Seed) as real 3D models in VR ----
+// Seeds follow the same rules: welded to the string (pouch) hand while nocked, tumbling in flight.
+// Vanilla has no nut model for the projectile: in flight it is a near-black spinning sparkle
+// (EnArrow_Draw, ARROW_NUT), and while carried it draws nothing (that path needs speedXZ != 0).
+// In VR the nut is the get-item model instead: welded to the carrying hand at headset rate
+// (live hand-child matrices, like the bowstring), and tumbling along its flight. Display-only:
+// masked out of physical combat's visual-mesh collision.
+namespace {
+// Every runtime LOAD matrix emitted in [from, to): re-express it relative to the hand at this
+// tick and register it as a live child of that hand.
+void WeldEmittedToHand(Gfx* from, Gfx* to, int hand, MtxF* handInv) {
+    for (Gfx* g = from; g < to; ++g) {
+        if (((g->words.w0 >> 24) & 0xFF) != G_MTX) {
+            continue;
+        }
+        const uint32_t params = (uint32_t)(g->words.w0 & 0xFF) ^ G_MTX_PUSH;
+        if (!(params & G_MTX_LOAD) || (params & G_MTX_PROJECTION)) {
+            continue;
+        }
+        Mtx* m = (Mtx*)g->words.w1;
+        if (m == NULL || m == &gMtxClear || (gPlayState && m == gPlayState->billboardMtx)) {
+            continue;
+        }
+        MtxF cur;
+        MtxF local;
+        Matrix_MtxToMtxF(m, &cur);
+        SkinMatrix_MtxFMtxFMult(handInv, &cur, &local);
+        VR_RegisterHandChildMatrix((const void*)m, hand, &local.mf[0][0]);
+    }
+}
+} // namespace
+
+extern "C" bool VrItemThrow_DrawNutModel(Actor* actor, PlayState* play) {
+    if (actor == NULL || play == NULL || (actor->params != ARROW_NUT && actor->params != ARROW_SEED) ||
+        !VR_IsInitialized() || !CVarGetInteger("gVrNutModel", 1)) {
+        return false;
+    }
+    const bool isSeed = actor->params == ARROW_SEED;
+    const s16 gid = isSeed ? GID_SEEDS : GID_NUTS;
+    Player* player = GET_PLAYER(play);
+    const bool held = player != NULL && player->heldActor == actor && actor->parent == &player->actor;
+    const bool flying = actor->parent == NULL && (actor->speedXZ != 0.0f || actor->velocity.y != 0.0f);
+    if (!held && !flying) {
+        return false;
+    }
+    const float scale = isSeed ? CVarGetFloat("gVrSeedModelScale", 0.05f) : CVarGetFloat("gVrNutModelScale", 0.06f);
+
+    OPEN_DISPS(play->state.gfxCtx);
+    VrCombat_MeshMaskPush(play->state.gfxCtx);
+    Gfx* opaStart = POLY_OPA_DISP;
+    Gfx* xluStart = POLY_XLU_DISP;
+    if (held) {
+        const int hand = isSeed ? VrArchery_StringHand() : CarryHand();
+        float pos[3] = { actor->world.pos.x, actor->world.pos.y, actor->world.pos.z };
+        float rot[4];
+        VR_GetHandPose(hand, pos, rot);
+        Matrix_Translate(pos[0], pos[1], pos[2], MTXMODE_NEW);
+        Matrix_Scale(scale, scale, scale, MTXMODE_APPLY);
+        GetItem_Draw(play, gid);
+        float hm[4][4];
+        if (VR_GetHandMatrix(hand, hm)) {
+            MtxF handMtx;
+            MtxF handInv;
+            memcpy(handMtx.mf, hm, sizeof(handMtx.mf));
+            if (SkinMatrix_Invert(&handMtx, &handInv) == 0) {
+                WeldEmittedToHand(opaStart, POLY_OPA_DISP, hand, &handInv);
+                WeldEmittedToHand(xluStart, POLY_XLU_DISP, hand, &handInv);
+            }
+        }
+    } else {
+        const float spin = (float)((play->gameplayFrames & 0xFF) * 4000) * (float)(M_PI / 0x8000);
+        Matrix_Translate(actor->world.pos.x, actor->world.pos.y, actor->world.pos.z, MTXMODE_NEW);
+        Matrix_RotateY(spin, MTXMODE_APPLY);
+        Matrix_RotateX(spin * 0.7f, MTXMODE_APPLY);
+        Matrix_Scale(scale, scale, scale, MTXMODE_APPLY);
+        GetItem_Draw(play, gid);
+    }
+    VrCombat_MeshMaskPop(play->state.gfxCtx);
+    CLOSE_DISPS(play->state.gfxCtx);
+    return true;
 }

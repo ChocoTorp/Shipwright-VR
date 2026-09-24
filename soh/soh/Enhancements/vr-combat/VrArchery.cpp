@@ -2,6 +2,7 @@ extern "C" {
 #include "z64.h"
 #include "macros.h"
 #include "functions.h"
+#include "variables.h" // gMtxClear
 #include "objects/gameplay_keep/gameplay_keep.h"
 extern PlayState* gPlayState;
 }
@@ -178,6 +179,124 @@ extern "C" void VrArchery_DrawNockIcon(void) {
     CLOSE_DISPS(gPlayState->state.gfxCtx);
 }
 
+// QuestShip: predicted flight path while the string is drawn — a thin translucent ribbon that
+// follows the projectile's REAL motion (EnArrow_Shoot/EnArrow_Fly): launched along the aim line at
+// 80 (seed) / 150 (arrow) units per tick, moved 1.5x velocity per update, gravity -0.4 only once
+// the flight timer (15 / 12) drops below 7.2, killed at 0. Stops at the first surface it would
+// hit. Camera-facing, fading toward the end, no depth write, masked out of combat collision.
+constexpr int kTrajMaxPts = 16;
+Vtx sTrajVtx[kTrajMaxPts * 2];
+Gfx sTrajDl[40];
+
+extern "C" void VrArchery_DrawTrajectory(void) {
+    if (gPlayState == NULL || !CVarGetInteger("gVrArcheryTrajectory", 1) || !sNocked) {
+        return;
+    }
+    Player* player = GET_PLAYER(gPlayState);
+    if (player == NULL || !VrArchery_Covers(player)) {
+        return;
+    }
+    float seg[6];
+    if (!VrArchery_AimSegment(seg)) {
+        return;
+    }
+    const bool seed = player->heldItemAction == PLAYER_IA_SLINGSHOT;
+    const float speed = seed ? 80.0f : 150.0f;
+    int timer = seed ? 15 : 12;
+    Vec3f pos = { seg[0], seg[1], seg[2] };
+    float vx = seg[3] * speed, vy = seg[4] * speed, vz = seg[5] * speed;
+    float gravity = 0.0f;
+    Vec3f pts[kTrajMaxPts];
+    int n = 0;
+    pts[n++] = pos;
+    while (n < kTrajMaxPts) {
+        if (--timer <= 0) {
+            break;
+        }
+        if (timer < 7.2f) {
+            gravity = -0.4f;
+        }
+        vy += gravity;
+        if (vy < -150.0f) {
+            vy = -150.0f;
+        }
+        Vec3f next = { pos.x + vx * 1.5f, pos.y + vy * 1.5f, pos.z + vz * 1.5f };
+        Vec3f hit;
+        CollisionPoly* poly = NULL;
+        s32 bgId = 0;
+        if (BgCheck_EntityLineTest1(&gPlayState->colCtx, &pos, &next, &hit, &poly, true, true, true, true, &bgId)) {
+            pts[n++] = hit;
+            break;
+        }
+        pts[n++] = next;
+        pos = next;
+    }
+    if (n < 2) {
+        return;
+    }
+
+    float eye[3], fwd[3], up[3];
+    VR_GetCameraPose(eye, fwd, up);
+    const float baseHw = CVarGetFloat("gVrArcheryTrajectoryWidth", 0.35f); // game units (~1 cm)
+    const int alpha0 = CVarGetInteger("gVrArcheryTrajectoryAlpha", 110);
+    for (int i = 0; i < n; i++) {
+        const Vec3f& a = pts[i > 0 ? i - 1 : 0];
+        const Vec3f& b = pts[i > 0 ? i : 1];
+        float tx = b.x - a.x, ty = b.y - a.y, tz = b.z - a.z; // segment tangent
+        float ex = eye[0] - pts[i].x, ey = eye[1] - pts[i].y, ez = eye[2] - pts[i].z;
+        const float dist = sqrtf(ex * ex + ey * ey + ez * ez);
+        // side = tangent x to-eye, so the ribbon faces the viewer
+        float sx = ty * ez - tz * ey, sy = tz * ex - tx * ez, sz = tx * ey - ty * ex;
+        const float sl = sqrtf(sx * sx + sy * sy + sz * sz);
+        const float hw = fmaxf(baseHw, dist * 0.0025f); // keep far segments visible (~0.15 deg)
+        if (sl > 1e-4f) {
+            sx *= hw / sl;
+            sy *= hw / sl;
+            sz *= hw / sl;
+        }
+        const u8 al = (u8)(alpha0 * (1.0f - (float)i / (float)(n - 1)));
+        for (int k = 0; k < 2; k++) {
+            const float sgn = k == 0 ? 1.0f : -1.0f;
+            Vtx& v = sTrajVtx[i * 2 + k];
+            v.v.ob[0] = (s16)(pts[i].x + sx * sgn);
+            v.v.ob[1] = (s16)(pts[i].y + sy * sgn);
+            v.v.ob[2] = (s16)(pts[i].z + sz * sgn);
+            v.v.flag = 0;
+            v.v.tc[0] = v.v.tc[1] = 0;
+            v.v.cn[0] = 255;
+            v.v.cn[1] = 255;
+            v.v.cn[2] = 235;
+            v.v.cn[3] = al;
+        }
+    }
+
+    Gfx* p = sTrajDl;
+    gSPVrPhysMask(p++, 1);
+    gDPPipeSync(p++);
+    gDPSetCycleType(p++, G_CYC_1CYCLE);
+    gDPSetRenderMode(p++, G_RM_ZB_XLU_SURF, G_RM_ZB_XLU_SURF2);
+    gDPSetCombineMode(p++, G_CC_SHADE, G_CC_SHADE);
+    gSPTexture(p++, 0, 0, 0, G_TX_RENDERTILE, G_OFF);
+    gSPClearGeometryMode(p++, G_CULL_BOTH | G_LIGHTING | G_FOG);
+    gSPSetGeometryMode(p++, G_SHADE | G_SHADING_SMOOTH);
+    gSPMatrix(p++, &gMtxClear, G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
+    gSPVertex(p++, (uintptr_t)sTrajVtx, n * 2, 0);
+    for (int i = 0; i + 1 < n; i++) {
+        gSP2Triangles(p++, i * 2, i * 2 + 1, i * 2 + 2, 0, i * 2 + 1, i * 2 + 3, i * 2 + 2, 0);
+    }
+    gSPVrPhysMask(p++, 0);
+    gSPEndDisplayList(p++);
+
+    OPEN_DISPS(gPlayState->state.gfxCtx);
+    gSPDisplayList(POLY_XLU_DISP++, sTrajDl);
+    CLOSE_DISPS(gPlayState->state.gfxCtx);
+}
+
+// QuestShip: the string (pouch) hand, for drawing the nocked seed in it.
+extern "C" int VrArchery_StringHand(void) {
+    return StringHand();
+}
+
 // True while a nock is drawn — the string presentation renders pulled to the string hand.
 extern "C" bool VrArchery_StringNocked(void) {
     return sNocked && gPlayState != NULL && VrArchery_Covers(GET_PLAYER(gPlayState));
@@ -347,6 +466,7 @@ void ArcheryTick() {
 void RegisterVrArchery() {
     COND_HOOK(OnPlayerUpdate, true, ArcheryTick);
     COND_HOOK(OnPlayDrawEnd, true, VrArchery_DrawNockIcon);
+    COND_HOOK(OnPlayDrawEnd, true, VrArchery_DrawTrajectory);
 }
 
 static RegisterShipInitFunc initVrArchery(RegisterVrArchery);
