@@ -127,9 +127,6 @@ More detailed documentation can be found in the 'docs' directory, including the 
 - Quest 3 standalone port by **ChocoTorp**.
 
 This is a fan project, not affiliated with or endorsed by Nintendo. The Legend of Zelda and Ocarina of Time are trademarks of Nintendo.
-
-<a href="https://github.com/Kenix3/libultraship/">
-  <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./docs/poweredbylus.darkmode.png">
     <img alt="Powered by libultraship" src="./docs/poweredbylus.lightmode.png">
   </picture>
