@@ -127,7 +127,3 @@ More detailed documentation can be found in the 'docs' directory, including the 
 - Quest 3 standalone port by **ChocoTorp**.
 
 This is a fan project, not affiliated with or endorsed by Nintendo. The Legend of Zelda and Ocarina of Time are trademarks of Nintendo.
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/poweredbylus.darkmode.png">
-    <img alt="Powered by libultraship" src="./docs/poweredbylus.lightmode.png">
-  </picture>
-</a>
