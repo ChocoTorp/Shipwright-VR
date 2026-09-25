@@ -55,7 +55,7 @@ Some places in Ocarina of Time (Link's house, the Market and its back alleys, th
    - `Djipi's 3DE - 27 Background Textures`
    - `Djipi's 3DE - 32 Background Full 3D (OPTIONAL)`
    - `Djipi's 3DE - 33 Background Full 3D Textures (OPTIONAL)`
-2. **Launch the game** (restart it if it was running) and **walk into Link's house.** It's a real 3D room now. Mods are on by default, so there's nothing to switch on.
+2. **Launch the game** (restart it if it was running). That's it: mods are on by default, so there's nothing to switch on. The easiest place to check it worked is **Link's house**, which is now a real 3D room instead of a green backdrop.
 
 **Still seeing green backdrops, or a room looks wrong?** Check that files `32` and `33` are directly in `SOHVR/mods` (not in a subfolder) and that **Settings > Mod Menu > Enable Mods** is on (open settings with the hamburger button). The rooms are tested with the whole pack installed; if something looks off with only these four files, add the rest (Bonus 2).
 
