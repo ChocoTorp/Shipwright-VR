@@ -29,7 +29,7 @@ Create a free developer account at [developers.meta.com](https://developers.meta
 Install [SideQuest](https://sidequestvr.com/setup-howto) on your computer, connect the Quest by USB (allow USB debugging in the headset), and use **Install APK** to install the `.apk` from [Releases](../../releases).
 
 ### 4. Copy your ROM to the Quest
-With SideQuest's file manager (or Windows File Explorer), put your ROM file in the Quest's **Download** folder. Any file name works: the game recognises it by its contents.
+Put your ROM file in the Quest's **Download** folder (see [How to copy files to your Quest](#how-to-copy-files-to-your-quest) below). Any file name works: the game recognises it by its contents.
 
 ### 5. Launch the Game!
 In the headset, open **App Library > Unknown Sources > Quest 3: OOT**. When it asks, **check "allow access to edit files on device"**, then go back to the game. **The first boot takes about 1 to 2 minutes and only shows loading dots.** It isn't frozen: the game **finds your ROM by itself** and builds its data from it, which only happens once. Then it just starts. (If it can't find a ROM, a setup screen appears in the headset instead, where you can rescan and pick your ROM.)
@@ -40,17 +40,36 @@ Congratulations, you are now sailing with the Ship of Harkinian, in VR! Have fun
 
 Full step-by-step guide: **[QUEST.md](QUEST.md)**.
 
+## How to copy files to your Quest
+
+You'll do this for your ROM, and again for the bonus texture pack.
+
+1. **Connect the Quest to your computer** with a USB-C cable and put the headset on. If it asks to **allow access to data**, choose **Allow**.
+2. **Open SideQuest** on your computer and wait for the green dot (top left) that means the Quest is connected.
+3. **Click the folder icon** in SideQuest's top bar ("manage files on the headset"). You're now looking at the Quest's storage.
+4. **Open the destination folder** by double-clicking it:
+   - your ROM goes in **Download**;
+   - texture pack files go in **SOHVR**, then **mods** (the SOHVR folder appears after the game's first launch).
+5. **Drag the files** from your computer into the SideQuest window and wait for the copy to finish.
+
+On **Windows** you can also use File Explorer instead of SideQuest: the Quest shows up as **Quest 3 > Internal shared storage**, with the same folders.
+
 # Bonuses
 
 Once the game is installed and running, two free upgrades make it look much better in VR. Both come from one download, **Djipi's 3DS Experience**, which isn't included in this project (it's Djipi's work, made from Nintendo's textures).
 
-**Get the pack (for either bonus):** download it from [GameBanana](https://gamebanana.com/mods/477979) (the main download, `djipi_s_3ds_experience_tot_fix.zip`) and unzip it on your computer. You get a folder of 37 files named `Djipi's 3DE - 01 ...` to `Djipi's 3DE - Z ...`.
+**Get the pack (for either bonus):**
+1. **Download it:** [click here to download `djipi_s_3ds_experience_tot_fix.zip`](https://gamebanana.com/dl/1810733) (655 MB). Or, on the [GameBanana page](https://gamebanana.com/mods/477979), scroll all the way down to the **Files** section and click **Manual Download** under `djipi_s_3ds_experience_tot_fix.zip` (the second file, not the small "Art Plus Link" one):
+
+   ![GameBanana Files section: click Manual Download under djipi_s_3ds_experience_tot_fix.zip](docs/quest/gamebanana-download.png)
+
+2. **Unzip it** on your computer (Mac: double-click it; Windows: right-click, **Extract All**). You get a folder of 37 files named `Djipi's 3DE - 01 ...` to `Djipi's 3DE - Z ...`. These are the files you copy to the Quest below.
 
 ## Bonus 1: 3D rooms instead of green backdrops
 
 Some places in Ocarina of Time (Link's house, the Market and its back alleys, the shops, the Temple of Time entrance) are flat pre-rendered pictures with the characters walking in front of them. That works on a TV but not in VR, so in these rooms you see **green backdrops** instead of walls. This bonus replaces them with real 3D rooms.
 
-1. **Copy the room files to the Quest.** Connect the Quest, open SideQuest's file manager, go into **SOHVR**, then **mods**, and drag in these four files (just the files, no subfolders):
+1. **Copy the room files to the Quest** (see [How to copy files to your Quest](#how-to-copy-files-to-your-quest)): into **SOHVR**, then **mods**, drag these four files (just the files, no subfolders):
    - `Djipi's 3DE - 26 Background 3DS`
    - `Djipi's 3DE - 27 Background Textures`
    - `Djipi's 3DE - 32 Background Full 3D (OPTIONAL)`
@@ -63,12 +82,14 @@ Some places in Ocarina of Time (Link's house, the Market and its back alleys, th
 
 Replaces the whole game's N64 textures and models with Ocarina of Time 3D's HD versions: characters, enemies, items, dungeons and Hyrule Field.
 
-1. **Copy the rest of the pack.** In SideQuest's file manager, drag **all 37 files** into **SOHVR/mods** (the four room files from Bonus 1 are part of it, so this covers both bonuses).
+1. **Copy the whole pack.** Drag **all 37 files** into **SOHVR/mods**, the same way (the four room files from Bonus 1 are part of it, so this covers both bonuses).
 2. **Launch the game** (restart it if it was running).
 3. **Let it optimize.** About 30 seconds after you start playing with a new pack, the game begins compressing it for the Quest in the background, which takes about 3 minutes. You can keep playing; the progress is in **VR Settings > Performance > Texture Pack**.
 4. **Restart once.** When it says "restart the game to use it", quit and launch again. From then on it uses about 4x less memory and loads faster.
 
 Keep Djipi's original files in the mods folder: the game still reads a few textures from them. If you add, remove or update pack files later, it notices and re-optimizes by itself.
+
+**Known issue with the current pack version:** some players report a crash in the Chamber of Sages cutscene with the latest Djipi update (there's a workaround in the GameBanana comments).
 
 Optional files you can leave out: `24`/`25` (Majora's Mask style chests), `Original N64 HUD Mod` (keeps the N64 HUD), `Z - Crescent Moon Addon`. If you use a custom Link model, delete `02 Link's Textures`.
 
