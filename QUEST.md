@@ -36,8 +36,8 @@ This is a Quest port of [Ship of Harkinian VR](https://github.com/ShinyWindow/Sh
 
 ### 5. First launch
 1. In the headset, open the **App Library**, change the filter from **All** to **Unknown Sources**, and start **Quest 3: OOT**.
-2. If it asks for **access to all files**, turn it on, then go back. The game stores its data in a folder called `SOHVR`.
-3. The first launch builds the game data from your ROM. **You'll see loading dots for about 1 to 2 minutes.** That's normal and only happens once.
+2. When it asks, **check "allow access to edit files on device"**, then go back to the game. It stores its data in a folder called `SOHVR`.
+3. **The first boot takes about 1 to 2 minutes and only shows loading dots.** Don't worry, it isn't frozen: it's building the game's data from your ROM, which only happens once. Every launch after that is quick.
 4. The game starts. Have fun!
 
 ## Optional: HD textures (Djipi's 3DS Experience)

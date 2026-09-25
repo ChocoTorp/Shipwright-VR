@@ -32,7 +32,7 @@ Install [SideQuest](https://sidequestvr.com/setup-howto) on your computer, conne
 With SideQuest's file manager (or Windows File Explorer), put your ROM file in the Quest's **Download** folder.
 
 ### 5. Launch the Game!
-In the headset, open **App Library > Unknown Sources > Quest 3: OOT**. Allow file access if asked. The first launch builds the game data from your ROM: **you'll see loading dots for about 1 to 2 minutes**, once.
+In the headset, open **App Library > Unknown Sources > Quest 3: OOT**. When it asks, **check "allow access to edit files on device"**, then go back to the game. **The first boot takes about 1 to 2 minutes and only shows loading dots.** It isn't frozen: it's building the game's data from your ROM, which only happens once.
 
 ### 6. Play!
 
@@ -55,8 +55,8 @@ Full step-by-step guide: **[QUEST.md](QUEST.md)**.
 
 **First launch**
 - In the headset: **App Library > Unknown Sources > Quest 3: OOT**.
-- If asked, allow access to all files.
-- Wait through about 1 to 2 minutes of loading dots while it builds the game data (only the first time).
+- When it asks, **check "allow access to edit files on device"**, then go back to the game.
+- **The first boot takes about 1 to 2 minutes and only shows loading dots.** Don't worry, it isn't frozen: it's building the game's data from your ROM, which only happens once.
 
 **HD textures (Djipi's 3DS Experience, all 37 files)**
 - Download it from [GameBanana](https://gamebanana.com/mods/477979) and unzip it.
