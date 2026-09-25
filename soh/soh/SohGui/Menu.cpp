@@ -695,6 +695,9 @@ void Menu::DrawElement() {
     ImGui::PushFont(OTRGlobals::Instance->fontStandardLargest);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 8.0f));
     std::string headerIndex = CVarGetString(headerCvar, "Settings");
+    if (std::find(menuOrder.begin(), menuOrder.end(), headerIndex) == menuOrder.end()) {
+        headerIndex = "Settings"; // QuestShip: a saved section may be hidden on this platform
+    }
     ImVec2 pos = window->DC.CursorPos;
     float centerX = pos.x + windowWidth / 2 - (style.ItemSpacing.x * (menuEntries.size() + 1));
     std::vector<ImVec2> headerSizes;
@@ -871,7 +874,8 @@ void Menu::DrawElement() {
     const char* sidebarCvar = menuEntries.at(headerIndex).sidebarCvar;
 
     std::string sectionIndex = CVarGetString(sidebarCvar, "");
-    if (!sidebar->contains(sectionIndex)) {
+    const auto& order = menuEntries.at(headerIndex).sidebarOrder;
+    if (!sidebar->contains(sectionIndex) || std::find(order.begin(), order.end(), sectionIndex) == order.end()) {
         sectionIndex = menuEntries.at(headerIndex).sidebarOrder.at(0);
     }
     float sectionCenterX = pos.x + (sidebarWidth / 2);

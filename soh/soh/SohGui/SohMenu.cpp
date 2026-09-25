@@ -114,16 +114,10 @@ void SohMenu::AddMenuElements() {
     AddMenuVRSettings();
     AddMenuEnhancements();
     AddMenuRandomizer();
-#if defined(__ANDROID__)
-    // QuestShip: no Network (online services) or Dev Tools sections, and no search (no keyboard),
-    // in the standalone Quest build; also drop sidebars that only apply to phones or desktops.
-    for (const char* sidebar : { "Touch Controls", "Input Viewer" }) {
-        std::erase(menuEntries["Settings"].sidebarOrder, std::string(sidebar));
-    }
-#else
     AddMenuNetwork();
     AddMenuDevTools();
 
+#if !defined(__ANDROID__)
     if (CVarGetInteger(CVAR_SETTING("Menu.SidebarSearch"), 0)) {
         InsertSidebarSearch();
     }
@@ -132,6 +126,16 @@ void SohMenu::AddMenuElements() {
     for (auto& initFunc : MenuInit::GetInitFuncs()) {
         initFunc();
     }
+
+#if defined(__ANDROID__)
+    // QuestShip: hide (not remove) what doesn't apply to the standalone Quest build: the Dev Tools
+    // section and the phone/desktop-only sidebars. (Network stays: online co-op works on Quest.)
+    // The sections must still exist while the init functions above register into them.
+    std::erase(menuOrder, std::string("Dev Tools"));
+    for (const char* sidebar : { "Touch Controls", "Input Viewer" }) {
+        std::erase(menuEntries["Settings"].sidebarOrder, std::string(sidebar));
+    }
+#endif
 
     mMenuElementsInitialized = true;
 }
