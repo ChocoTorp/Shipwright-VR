@@ -1,3 +1,13 @@
+# The Legend of Zelda: Ocarina of Time VR (Quest Compatible)
+
+**Play Ocarina of Time in VR, standalone on Meta Quest 3.** A Quest port of Ship of Harkinian VR.
+
+**[How to install on Quest (step by step)](QUEST.md)** · **[Download](../../releases)** · **[What's new in the Quest version](CHANGES.md)**
+
+You need your own copy of the game (ROM). No game assets are included.
+
+---
+
 ![Ship of Harkinian](docs/shiptitle.darkmode.png#gh-dark-mode-only)
 ![Ship of Harkinian](docs/shiptitle.lightmode.png#gh-light-mode-only)
 
