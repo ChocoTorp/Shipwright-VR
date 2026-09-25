@@ -35,7 +35,7 @@ static const std::map<int32_t, const char*> vrTurnStyleOptions = {
 };
 
 static const std::map<int32_t, const char*> vrMenuButtonOptions = {
-    { 0, "Left Menu Button" }, { 1, "Left Stick Click" }, { 2, "Right Stick Click" }, { 3, "X" },
+    { 0, "None" }, { 1, "Left Stick Click" }, { 2, "Right Stick Click" }, { 3, "X" },
     { 4, "Y" },                { 5, "A" },                { 6, "B" },
 };
 static const std::map<int32_t, const char*> vrHudAttachOptions = {
@@ -1586,13 +1586,14 @@ void SohMenu::AddMenuVRSettings() {
     AddSidebarEntry("VR Settings", "VR Inputs", 1);
     WidgetPath buttonsPath = { "VR Settings", "VR Inputs", SECTION_COLUMN_1 };
 
-    AddWidget(buttonsPath, "Settings Menu Button", WIDGET_CVAR_COMBOBOX)
+    AddWidget(buttonsPath, "Extra Settings Menu Button", WIDGET_CVAR_COMBOBOX)
         .CVar("gVrMenuButton")
         .Options(ComboboxOptions()
                      .DefaultIndex(0)
                      .ComboMap(vrMenuButtonOptions)
-                     .Tooltip("The controller button that opens and closes this settings menu in the "
-                              "headset. That button is no longer passed to the game."));
+                     .Tooltip("The left menu button (hamburger) always opens this settings menu. Pick a "
+                              "second button that also opens and closes it. That button is no longer "
+                              "passed to the game."));
     AddWidget(buttonsPath, "VrInputBindings", WIDGET_CUSTOM).CustomFunction(VrInputBindings).HideInSearch(true);
 
     AddWidget(buttonsPath, "Item Select (Half-Life: Alyx Style)", WIDGET_SEPARATOR_TEXT);

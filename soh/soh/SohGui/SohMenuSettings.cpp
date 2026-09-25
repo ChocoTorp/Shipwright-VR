@@ -25,7 +25,7 @@ extern "C" {
 
 #if defined(__ANDROID__)
 static const std::map<int32_t, const char*> vrMenuButtonOptions = {
-    { 0, "Left Menu Button" }, { 1, "Left Stick Click" }, { 2, "Right Stick Click" }, { 3, "X" },
+    { 0, "None" }, { 1, "Left Stick Click" }, { 2, "Right Stick Click" }, { 3, "X" },
     { 4, "Y" },                { 5, "A" },                { 6, "B" },
 };
 #endif
@@ -572,13 +572,14 @@ void SohMenu::AddMenuSettings() {
         .Options(ButtonOptions().Size(Sizes::Inline));
 #if defined(__ANDROID__)
     AddWidget(path, "VR", WIDGET_SEPARATOR_TEXT);
-    AddWidget(path, "Settings Menu Button", WIDGET_CVAR_COMBOBOX)
+    AddWidget(path, "Extra Settings Menu Button", WIDGET_CVAR_COMBOBOX)
         .CVar("gVrMenuButton")
         .Options(ComboboxOptions()
                      .DefaultIndex(0)
                      .ComboMap(vrMenuButtonOptions)
-                     .Tooltip("The controller button that opens and closes this settings menu in the "
-                              "headset. That button is no longer passed to the game."));
+                     .Tooltip("The left menu button (hamburger) always opens this settings menu. Pick a "
+                              "second button that also opens and closes it. That button is no longer "
+                              "passed to the game."));
 #endif
     AddWidget(path, "Controller Bindings", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Popout Bindings Window", WIDGET_WINDOW_BUTTON)

@@ -32,7 +32,7 @@
 - Item compass locks in space so walking never misselects.
 - Compass models are ignored by sword and item collision.
 - Nut preview waits in front of your chest, space-locked.
-- Choose which controller button opens the in-headset settings menu.
+- Add a second button to open the settings menu.
 - Archery landing target and flight line have separate switches.
 
 
@@ -139,8 +139,8 @@ Physical combat builds collision from what is drawn, so the compass models could
 **Nut preview waits in front of your chest, space-locked.**
 When Deku Nuts are equipped, a 3D nut waits in front of your chest to be grabbed. It is placed in physical space relative to your head, 40 centimeters ahead and 25 centimeters down. It rides with the headset at render rate, so it does not trail while walking. It turns slowly so it reads as an object to pick up.
 
-**Choose which controller button opens the in-headset settings menu.**
-The settings menu opens with the left menu button by default. A new option in Settings, Controls and in VR Settings, VR Inputs lets you pick a stick click, X, Y, A or B instead. The chosen button opens and closes the menu and is no longer passed to the game. This helps players who want the menu button free for other bindings.
+**Add a second button to open the settings menu.**
+The left menu button (the hamburger) always opens the settings menu. A new option in Settings, Controls and in VR Settings, VR Inputs adds a second button: a stick click, X, Y, A or B. That button then also opens and closes the menu and is no longer passed to the game. It is off by default.
 
 **Archery landing target and flight line have separate switches.**
 The slingshot and bow landing target (ring and dot) and the flight path line are now two independent settings. Both live in VR Settings under Items and Archery, in an Archery Targeting section. You can show either one, both or neither. The target is on and the line is off by default.

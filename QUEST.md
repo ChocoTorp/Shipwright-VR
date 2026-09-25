@@ -64,7 +64,7 @@ If you add, remove or update pack files later, the game notices and re-optimizes
 | Slingshot / bow | Bring your free hand to the weapon, squeeze the trigger, pull back, release. A ring shows where the shot will land. |
 | Grab / throw a Deku Nut | Grip near the nut in front of your chest, throw |
 | Pause, save, equip | Left stick click (right stick click in left-handed mode) |
-| In-headset settings menu | Left menu button, changeable in Settings > Controls (aim with a controller, trigger to click) |
+| In-headset settings menu | Left menu button; a second button can be added in Settings > Controls (aim with a controller, trigger to click) |
 
 Left-handed mode, hand position, HUD placement and more are in **VR Settings**.
 

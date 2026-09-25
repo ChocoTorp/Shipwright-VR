@@ -57,7 +57,7 @@ Full step-by-step guide: **[QUEST.md](QUEST.md)**.
 | Slingshot / bow | Bring your free hand to the weapon, squeeze the trigger, pull back, release. A ring shows where the shot will land (target and flight line toggles: VR Settings > Items & Archery). |
 | Grab and throw a Deku Nut | Grip near the nut in front of your chest, then throw |
 | Pause, save, equip | Left stick click (right stick click in left-handed mode) |
-| Settings menu (in the headset) | Left menu button (changeable in Settings > Controls); aim with a controller, trigger to click |
+| Settings menu (in the headset) | Left menu button (a second button can be added in Settings > Controls); aim with a controller, trigger to click |
 
 ### VR settings
 Everything VR-specific (left-handed mode, turning, hand and HUD placement, comfort, performance) is under **VR Settings** in the in-headset menu.
