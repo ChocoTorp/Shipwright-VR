@@ -66,14 +66,14 @@ Full step-by-step guide: **[QUEST.md](QUEST.md)**.
 
 **Settings**
 - **VR Settings > Comfort & Movement:** turning set to **Smooth**.
-- **VR Settings > Performance > Stereo Render Divisor:** **1** (the world redraws every frame; set 2 if a busy area feels choppy, see below).
+- **VR Settings > Performance > Stereo Render Divisor:** **2** (the default; see below).
 - **Enhancements > Graphics > Increase Actor Draw Distance:** **5x**.
 - **Left-handed mode:** off (right hand is the sword hand).
 - **VR Settings > VR Inputs** (selector profile): left grip = **Z-target**, right grip = **shield (R)**, **Y = pause (Start)**, left stick click = **L**.
 - **Extra Settings Menu Button:** **None** (the hamburger always opens settings).
 - **VR Settings > Items & Archery:** Landing Target **on**, Flight Path Line **off**.
 
-**What the Stereo Render Divisor does:** at **1**, the game redraws the 3D world for every frame the headset shows (72 per second), so animation and movement are fully smooth. At **2**, it redraws the world every other frame, and the headset fills the frames in between by shifting the last image to match your head. Head tracking stays at full speed either way, but the world itself animates at half rate, and the game needs about half the processing power. Keep it at 1, and switch to 2 only if a busy area starts to stutter.
+**What the Stereo Render Divisor does:** at **1**, the game redraws the 3D world for every frame the headset shows (72 per second), so animation and movement are fully smooth. At **2**, it redraws the world every other frame, and the headset fills the frames in between by shifting the last image to match your head. Head tracking stays at full speed either way, but the world itself animates at half rate, and the game needs about half the processing power. The default is **2**, which keeps busy areas smooth. Try 1 if you want fully smooth world animation and it holds up in the areas you play.
 
 # Configuration
 
@@ -124,7 +124,7 @@ How I installed it:
 3. Launched the game, opened the settings menu (left menu button) and turned on **Settings > Mod Menu > Enable Mods**.
 4. Played for a few minutes while the game optimized the pack for the Quest (**VR Settings > Performance > Texture Pack** shows the progress), then restarted the game.
 
-Settings I use with it: **Enhancements > Graphics > Increase Actor Draw Distance** set to 5x (you can see across Hyrule Field) and **VR Settings > Performance > Stereo Render Divisor** at 1.
+Settings I use with it: **Enhancements > Graphics > Increase Actor Draw Distance** set to 5x (you can see across Hyrule Field) and **VR Settings > Performance > Stereo Render Divisor** at 2.
 
 Optional files you can leave out: `24`/`25` (Majora's Mask style chests), `Original N64 HUD Mod` (keeps the N64 HUD), `Z - Crescent Moon Addon`. If you use a custom Link model, delete `02 Link's Textures`.
 

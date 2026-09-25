@@ -1499,14 +1499,13 @@ void SohMenu::AddMenuVRSettings() {
         .Options(IntSliderOptions()
                      .Min(1)
                      .Max(4)
-                     .DefaultValue(1)
+                     .DefaultValue(2)
                      .Format("%d")
-                     .Tooltip("Redraw the stereo pair every Nth frame; in between, the previous "
-                              "images are resubmitted with the pose they were drawn from and the "
-                              "compositor reprojects them onto your live head pose. 2 roughly "
-                              "halves render cost. The source animation is 20 fps, so the drop "
-                              "from 120 to 60 world updates is hard to see; head tracking is "
-                              "unaffected."));
+                     .Tooltip("How often the 3D world is redrawn. 1 = every headset frame (fully "
+                              "smooth animation). 2 (default) = every other frame; the headset "
+                              "shifts the last image to follow your head in between, so head "
+                              "tracking stays smooth and the game does about half the drawing "
+                              "work. Use 1 if the areas you play hold their frame rate."));
     AddWidget(perfPath, "Texture Pack", WIDGET_SEPARATOR_TEXT);
     AddWidget(perfPath, "Optimize Texture Packs For Quest", WIDGET_CVAR_CHECKBOX)
         .CVar("gTexturePackOptimize")
