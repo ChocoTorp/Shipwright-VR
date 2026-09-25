@@ -26,7 +26,7 @@ This is a Quest port of [Ship of Harkinian VR](https://github.com/ShinyWindow/Sh
 4. SideQuest shows a green dot in the top left when the Quest is connected.
 
 ### 3. Install the game
-1. Download the latest `ShipOfHarkinianVR-Quest3-*.apk` from this repo's [Releases](../../releases) page.
+1. Download the latest `Quest3-OOT-*.apk` (older releases: `ShipOfHarkinianVR-Quest3-*.apk`) from this repo's [Releases](../../releases) page.
 2. In SideQuest, click the **Install APK** button (the box with a down arrow, top right) and pick the APK. Wait for "Success".
 
 ### 4. Copy your ROM to the Quest
@@ -35,7 +35,7 @@ This is a Quest port of [Ship of Harkinian VR](https://github.com/ShinyWindow/Sh
    (On Windows you can also use File Explorer: **Quest 3 > Internal shared storage > Download**.)
 
 ### 5. First launch
-1. In the headset, open the **App Library**, change the filter from **All** to **Unknown Sources**, and start **Ship of Harkinian VR**.
+1. In the headset, open the **App Library**, change the filter from **All** to **Unknown Sources**, and start **Quest 3: OOT**.
 2. If it asks for **access to all files**, turn it on, then go back. The game stores its data in a folder called `SOHVR`.
 3. The first launch builds the game data from your ROM. **You'll see loading dots for about 1 to 2 minutes.** That's normal and only happens once.
 4. The game starts. Have fun!

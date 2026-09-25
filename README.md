@@ -32,7 +32,7 @@ Install [SideQuest](https://sidequestvr.com/setup-howto) on your computer, conne
 With SideQuest's file manager (or Windows File Explorer), put your ROM file in the Quest's **Download** folder.
 
 ### 5. Launch the Game!
-In the headset, open **App Library > Unknown Sources > Ship of Harkinian VR**. Allow file access if asked. The first launch builds the game data from your ROM: **you'll see loading dots for about 1 to 2 minutes**, once.
+In the headset, open **App Library > Unknown Sources > Quest 3: OOT**. Allow file access if asked. The first launch builds the game data from your ROM: **you'll see loading dots for about 1 to 2 minutes**, once.
 
 ### 6. Play!
 
