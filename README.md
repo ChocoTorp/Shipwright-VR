@@ -15,30 +15,28 @@ Get the latest APK from this repo's **[Releases](../../releases)** page.
 
 For problems with the **Quest version**, open an [issue on this repo](../../issues). Ship of Harkinian's own [Discord](https://discord.com/invite/shipofharkinian) and [website](https://www.shipofharkinian.com/) are for the main (non-VR) game. Please keep in mind that we do not condone piracy.
 
-# Quick Start
+# Install (4 steps)
 
-The Ship does not include any copyrighted assets. You are required to provide a supported copy of the game.
+You need your own copy of Ocarina of Time: a ROM file (you can check it's a supported version at [ship.equipment](https://ship.equipment/)).
 
-### 1. Verify your ROM dump
-You can verify you have dumped a supported copy of the game by using the compatibility checker at https://ship.equipment/. If you'd prefer to manually validate your ROM dump, you can cross-reference its `sha1` hash with the hashes [here](docs/supportedHashes.json).
+**1. Get ready (one time)**
+- Turn on **Developer Mode**: create a free account at [developers.meta.com](https://developers.meta.com/horizon/), then in the **Meta Horizon** phone app go to **Devices > Headset settings > Developer mode** and switch it on. Restart the Quest.
+- Install **SideQuest (Advanced Installer)** on your computer: [sidequestvr.com](https://sidequestvr.com/setup-howto).
+- Connect the Quest to your computer with a USB cable, put it on, and choose **Allow** when it asks about USB debugging.
 
-### 2. Turn on Developer Mode on your Quest (one time)
-Create a free developer account at [developers.meta.com](https://developers.meta.com/horizon/), then in the **Meta Horizon** phone app go to **Devices > Headset settings > Developer mode** and turn it on.
+**2. Install the game**
+- Download the latest `Quest3-OOT-*.apk` from [Releases](../../releases).
+- In SideQuest, click **Install APK** (top right) and pick that file.
 
-### 3. Install the APK
-Install [SideQuest](https://sidequestvr.com/setup-howto) on your computer, connect the Quest by USB (allow USB debugging in the headset), and use **Install APK** to install the `.apk` from [Releases](../../releases).
+**3. Copy your ROM to the Quest**
+- In SideQuest, click the **folder icon** (top bar), open the **Download** folder, and drag your ROM into it. Any file name works. (More detail: [How to copy files to your Quest](#how-to-copy-files-to-your-quest).)
 
-### 4. Copy your ROM to the Quest
-Put your ROM file in the Quest's **Download** folder (see [How to copy files to your Quest](#how-to-copy-files-to-your-quest) below). Any file name works: the game recognises it by its contents.
+**4. Play**
+- In the headset: **App Library > Unknown Sources > Quest 3: OOT**.
+- When it asks, check **"allow access to edit files on device"**, then go back to the game.
+- **The first launch shows loading dots for 1 to 2 minutes.** It isn't frozen: it finds your ROM by itself and builds the game from it. This only happens once. (If it can't find a ROM, a setup screen in the headset tells you what to do.)
 
-### 5. Launch the Game!
-In the headset, open **App Library > Unknown Sources > Quest 3: OOT**. When it asks, **check "allow access to edit files on device"**, then go back to the game. **The first boot takes about 1 to 2 minutes and only shows loading dots.** It isn't frozen: the game **finds your ROM by itself** and builds its data from it, which only happens once. Then it just starts. (If it can't find a ROM, a setup screen appears in the headset instead, where you can rescan and pick your ROM.)
-
-### 6. Play!
-
-Congratulations, you are now sailing with the Ship of Harkinian, in VR! Have fun!
-
-Full step-by-step guide: **[QUEST.md](QUEST.md)**.
+That's it. Want 3D rooms and HD textures? See [Bonuses](#bonuses).
 
 ## How to copy files to your Quest
 
@@ -93,28 +91,10 @@ Keep Djipi's original files in the mods folder: the game still reads a few textu
 
 Optional files you can leave out: `24`/`25` (Majora's Mask style chests), `Original N64 HUD Mod` (keeps the N64 HUD), `Z - Crescent Moon Addon`. If you use a custom Link model, delete `02 Link's Textures`.
 
-# Set it up like mine (step by step)
+# My settings
 
-**One-time Quest setup**
-- Create a free developer account at [developers.meta.com](https://developers.meta.com/horizon/).
-- In the **Meta Horizon** phone app: **Devices > Headset settings > Developer mode**, turn it on, then restart the Quest.
-- On a computer, install **SideQuest (Advanced Installer)** from [sidequestvr.com](https://sidequestvr.com/setup-howto).
-- Plug the Quest in by USB, put it on, and choose **Allow** (tick "always allow") for USB debugging.
+What I use on my Quest, on top of the install and both bonuses:
 
-**Install the game**
-- Download the latest `Quest3-OOT-*.apk` from [Releases](../../releases).
-- In SideQuest, click **Install APK** and pick that file.
-- In SideQuest's file manager, drag your own Ocarina of Time ROM (`.z64`) into the Quest's **Download** folder.
-
-**First launch**
-- In the headset: **App Library > Unknown Sources > Quest 3: OOT**.
-- When it asks, **check "allow access to edit files on device"**, then go back to the game.
-- **The first boot takes about 1 to 2 minutes and only shows loading dots.** Don't worry, it isn't frozen: it's building the game's data from your ROM, which only happens once.
-
-**3D rooms and HD textures (Djipi's 3DS Experience, all 37 files)**
-- Follow [Bonuses](#bonuses) above: I use both.
-
-**Settings**
 - **VR Settings > Comfort & Movement:** turning set to **Smooth**.
 - **VR Settings > Performance > Stereo Render Divisor:** **2** (the default; see below).
 - **Enhancements > Graphics > Increase Actor Draw Distance:** **5x**.
