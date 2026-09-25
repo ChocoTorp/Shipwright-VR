@@ -7,6 +7,7 @@ extern "C" {
 extern PlayState* gPlayState;
 }
 #include "VrCombat.h"
+#include "VrEmittedMatrices.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <cmath>
 #include <cstring>
@@ -41,7 +42,7 @@ bool HasThrowable(Player* player) {
 
 bool SwapChord() {
     const auto mask = (uint16_t)CVarGetInteger("gVrItemSelSwapInput", VR_BTN_GRIP);
-    return mask && (VR_GetControllerButton(0) & mask) && (VR_GetControllerButton(1) & mask);
+    return mask && (VR_GetGameButtons(0) & mask) && (VR_GetGameButtons(1) & mask);
 }
 
 // Any-hand grabs (behavior plan): a hand is "about to grab" when it is within reach of the
@@ -128,12 +129,12 @@ extern "C" void VrItemThrow_Tick(PlayState* play, Player* player) {
     }
     bool pressed[2], released[2];
     for (int hand = 0; hand < 2; ++hand) {
-        const bool grip = (VR_GetControllerButton(hand) & VR_BTN_GRIP) != 0;
+        const bool grip = (VR_GetGameButtons(hand) & VR_BTN_GRIP) != 0;
         pressed[hand] = grip && !sGripPrev[hand];
         released[hand] = !grip && sGripPrev[hand];
         sGripPrev[hand] = grip;
     }
-    if (HasThrowable(player) && (VR_GetControllerButton(CarryHand()) & VR_BTN_GRIP)) {
+    if (HasThrowable(player) && (VR_GetGameButtons(CarryHand()) & VR_BTN_GRIP)) {
         sReleaseHasGrip = true;
     }
     if (SwapChord() || VrItemSelect_PendingSlot() != -2) return;
@@ -193,27 +194,14 @@ extern "C" void VrItemThrow_Tick(PlayState* play, Player* player) {
 // (live hand-child matrices, like the bowstring), and tumbling along its flight. Display-only:
 // masked out of physical combat's visual-mesh collision.
 namespace {
-// Every runtime LOAD matrix emitted in [from, to): re-express it relative to the hand at this
-// tick and register it as a live child of that hand.
+// Re-express every model matrix just emitted relative to the hand at this tick and register it as
+// a live child of that hand.
 void WeldEmittedToHand(Gfx* from, Gfx* to, int hand, MtxF* handInv) {
-    for (Gfx* g = from; g < to; ++g) {
-        if (((g->words.w0 >> 24) & 0xFF) != G_MTX) {
-            continue;
-        }
-        const uint32_t params = (uint32_t)(g->words.w0 & 0xFF) ^ G_MTX_PUSH;
-        if (!(params & G_MTX_LOAD) || (params & G_MTX_PROJECTION)) {
-            continue;
-        }
-        Mtx* m = (Mtx*)g->words.w1;
-        if (m == NULL || m == &gMtxClear || (gPlayState && m == gPlayState->billboardMtx)) {
-            continue;
-        }
-        MtxF cur;
+    VrCombat::ForEachEmittedLoadMatrix(from, to, gPlayState ? gPlayState->billboardMtx : NULL, [&](Mtx* m, MtxF& cur) {
         MtxF local;
-        Matrix_MtxToMtxF(m, &cur);
         SkinMatrix_MtxFMtxFMult(handInv, &cur, &local);
         VR_RegisterHandChildMatrix((const void*)m, hand, &local.mf[0][0]);
-    }
+    });
 }
 } // namespace
 
@@ -222,25 +210,21 @@ extern "C" bool VrItemThrow_DrawNutModel(Actor* actor, PlayState* play) {
         !VR_IsInitialized() || !CVarGetInteger("gVrNutModel", 1)) {
         return false;
     }
-    const bool isSeed = actor->params == ARROW_SEED;
-    const s16 gid = isSeed ? GID_SEEDS : GID_NUTS;
+    const s16 gid = GID_NUTS;
     Player* player = GET_PLAYER(play);
     const bool held = player != NULL && player->heldActor == actor && actor->parent == &player->actor;
     const bool flying = actor->parent == NULL && (actor->speedXZ != 0.0f || actor->velocity.y != 0.0f);
     if (!held && !flying) {
         return false;
     }
-    if (held && isSeed) {
-        return false; // the pulled seed stays invisible (vanilla draws nothing at rest)
-    }
-    const float scale = isSeed ? CVarGetFloat("gVrSeedModelScale", 0.05f) : CVarGetFloat("gVrNutModelScale", 0.06f);
+    const float scale = CVarGetFloat("gVrNutModelScale", 0.06f);
 
     OPEN_DISPS(play->state.gfxCtx);
     VrCombat_MeshMaskPush(play->state.gfxCtx);
     Gfx* opaStart = POLY_OPA_DISP;
     Gfx* xluStart = POLY_XLU_DISP;
     if (held) {
-        const int hand = isSeed ? VrArchery_StringHand() : CarryHand();
+        const int hand = CarryHand();
         // Start from the hand's full matrix (position AND orientation), scaled to nut size, so the
         // nut is rigidly in the grip. (Position-only made it snap back to a neutral orientation
         // at every 20 Hz tick, only turning with the hand in between.)
@@ -253,7 +237,16 @@ extern "C" bool VrItemThrow_DrawNutModel(Actor* actor, PlayState* play) {
             const float handScale = sqrtf(hm[0][0] * hm[0][0] + hm[0][1] * hm[0][1] + hm[0][2] * hm[0][2]);
             const float rel = handScale > 1e-6f ? scale / handScale : scale;
             Matrix_Put(&handMtx);
-            Matrix_Scale(rel, rel, rel, MTXMODE_APPLY);
+            // Sit at the PALM (gVrHandPalm*, model units), not at the hand frame's origin (the wrist).
+            Matrix_Translate(CVarGetFloat("gVrHandPalmX", 0.0f), CVarGetFloat("gVrHandPalmY", 400.0f),
+                             CVarGetFloat("gVrHandPalmZ", 0.0f), MTXMODE_APPLY);
+            // A mirrored hand (the sword hand) carries a reflection; undo it for the nut, or its
+            // triangles wind backwards and it renders inside-out.
+            const float det = hm[0][0] * (hm[1][1] * hm[2][2] - hm[1][2] * hm[2][1]) -
+                              hm[0][1] * (hm[1][0] * hm[2][2] - hm[1][2] * hm[2][0]) +
+                              hm[0][2] * (hm[1][0] * hm[2][1] - hm[1][1] * hm[2][0]);
+            const float mirrorZ = det < 0.0f ? -1.0f : 1.0f;
+            Matrix_Scale(rel, rel, rel * mirrorZ, MTXMODE_APPLY);
             GetItem_Draw(play, gid);
             if (SkinMatrix_Invert(&handMtx, &handInv) == 0) {
                 WeldEmittedToHand(opaStart, POLY_OPA_DISP, hand, &handInv);
@@ -265,7 +258,7 @@ extern "C" bool VrItemThrow_DrawNutModel(Actor* actor, PlayState* play) {
             GetItem_Draw(play, gid);
         }
     } else {
-        const float spin = (float)((play->gameplayFrames & 0xFF) * 4000) * (float)(M_PI / 0x8000);
+        const float spin = BINANG_TO_RAD((s16)(play->gameplayFrames * 4000)); // wraps smoothly
         Matrix_Translate(actor->world.pos.x, actor->world.pos.y, actor->world.pos.z, MTXMODE_NEW);
         Matrix_RotateY(spin, MTXMODE_APPLY);
         Matrix_RotateX(spin * 0.7f, MTXMODE_APPLY);

@@ -132,8 +132,10 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -DDEBUG")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
-set(CMAKE_C_FLAGS_DEBUG "-g -ffast-math -DDEBUG")
-set(CMAKE_CXX_FLAGS_DEBUG "-g -ffast-math -DDEBUG")
+# QuestShip: the debug variant is what we ship to the headset; without -O2 libultraship (the
+# software RSP/renderer, ~93% of the game thread) and SDL built at -O0.
+set(CMAKE_C_FLAGS_DEBUG "-O2 -g -ffast-math -DDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-O2 -g -ffast-math -DDEBUG")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -ffast-math -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -ffast-math -DNDEBUG")
 else()

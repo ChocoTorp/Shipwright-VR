@@ -14,6 +14,7 @@ GetItemEntry ItemTable_Retrieve(int16_t getItemID);
 }
 
 #include "VrCombat.h"
+#include "VrEmittedMatrices.h"
 #include "VrItemSelectionState.h"
 
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -67,11 +68,7 @@ enum SelSector { SEC_CENTER = 0, SEC_UP, SEC_DOWN, SEC_LEFT, SEC_RIGHT };
 bool sOpen = false;
 int sHand = VR_HAND_RIGHT;
 int sSector = SEC_CENTER;
-Vec3f sAnchor;    // world units, the compass position THIS tick (body position + sAnchorOff)
-Vec3f sAnchorOff; // hand-at-hold-start relative to Link's BODY: the compass rides along when
-                  // the player keeps moving with the stick (or walks physically) mid-hold, and
-                  // locomotion never reads as a flick — only hand motion relative to the body.
-Vec3f sHeadRight; // camera right captured at open: stable targets, "left is left as you see it"
+Vec3f sAnchor; // world units: where the closed-state held-item preview icon sits this tick
 // QuestShip: selection + compass live in PHYSICAL space (raw tracking, meters). Stick locomotion,
 // snap/smooth turning and the 20 Hz game-tick vs render-rate anchor mismatch can't move them, so
 // walking while the compass is open no longer reads as a flick.
@@ -157,8 +154,8 @@ uint16_t SwapMask() {
 
 bool SwapChordHeld() {
     const uint16_t mask = SwapMask();
-    return mask != 0 && (VR_GetControllerButton(VR_HAND_LEFT) & mask) != 0 &&
-           (VR_GetControllerButton(VR_HAND_RIGHT) & mask) != 0;
+    return mask != 0 && (VR_GetGameButtons(VR_HAND_LEFT) & mask) != 0 &&
+           (VR_GetGameButtons(VR_HAND_RIGHT) & mask) != 0;
 }
 
 float PickThresholdMeters() {
@@ -279,7 +276,7 @@ void ItemSelectTick() {
         }
     }
     for (int hand = 0; hand < 2; ++hand) {
-        sSelection.ObserveTrigger(hand, (VR_GetControllerButton(hand) & VR_BTN_TRIGGER) != 0);
+        sSelection.ObserveTrigger(hand, (VR_GetGameButtons(hand) & VR_BTN_TRIGGER) != 0);
     }
     QuickSwapTick();
     const bool avail = SelectorAvailable();
@@ -316,31 +313,10 @@ void ItemSelectTick() {
     }
 
     if (!sOpen) {
-        if (avail && (VR_GetControllerButton(SelectorHand()) & SelectorMask())) {
-            float pos[3];
-            float quat[4];
-            float eye[3];
-            float fwd[3];
-            float up[3];
+        if (avail && (VR_GetGameButtons(SelectorHand()) & SelectorMask())) {
             const int hand = SelectorHand();
             float handM[3];
-            if (VR_GetHandPose(hand, pos, quat) && VR_GetHandPositionPhysical(hand, handM)) {
-                VR_GetCameraPose(eye, fwd, up);
-                // camera right = fwd x up, flattened to the horizon so "left/right" stays
-                // level even when looking up or down.
-                Vec3f right = { fwd[1] * up[2] - fwd[2] * up[1], 0.0f, fwd[0] * up[1] - fwd[1] * up[0] };
-                const float rl = sqrtf(right.x * right.x + right.z * right.z);
-                if (rl > 1e-3f) {
-                    right.x /= rl;
-                    right.z /= rl;
-                } else {
-                    right = { 1.0f, 0.0f, 0.0f };
-                }
-                Player* player = GET_PLAYER(gPlayState);
-                sAnchor = { pos[0], pos[1], pos[2] };
-                sAnchorOff = { pos[0] - player->actor.world.pos.x, pos[1] - player->actor.world.pos.y,
-                               pos[2] - player->actor.world.pos.z };
-                sHeadRight = right;
+            if (VR_GetHandPositionPhysical(hand, handM)) {
                 sAnchorM[0] = handM[0];
                 sAnchorM[1] = handM[1];
                 sAnchorM[2] = handM[2];
@@ -361,14 +337,7 @@ void ItemSelectTick() {
         return;
     }
 
-    const bool held = (VR_GetControllerButton(sHand) & SelectorMask()) != 0;
-    // The compass rides Link's body: re-derive the anchor from the current body position so
-    // stick movement (and physical walking) carries it along instead of leaving it behind.
-    {
-        Player* player = GET_PLAYER(gPlayState);
-        sAnchor = { player->actor.world.pos.x + sAnchorOff.x, player->actor.world.pos.y + sAnchorOff.y,
-                    player->actor.world.pos.z + sAnchorOff.z };
-    }
+    const bool held = (VR_GetGameButtons(sHand) & SelectorMask()) != 0;
     float handM[3];
     if (VR_GetHandPositionPhysical(sHand, handM)) {
         // Physical hand displacement since the hold started (meters): only the real hand counts.
@@ -451,22 +420,9 @@ int PushBillboardVtx(const Vec3f& at, const Vec3f& camRight, const Vec3f& camUp,
 // physical anchor (+ offset, + spin), so the mini model tracks at headset rate. Shared matrices
 // (gMtxClear, the scene billboard) are skipped: re-pinning those would move everything using them.
 void PinEmittedMatrices(Gfx* from, Gfx* to, const float anchorM[3], const float offset[3], float spinDps) {
-    for (Gfx* g = from; g < to; ++g) {
-        if (((g->words.w0 >> 24) & 0xFF) != G_MTX) {
-            continue;
-        }
-        const uint32_t params = (uint32_t)(g->words.w0 & 0xFF) ^ G_MTX_PUSH;
-        if (!(params & G_MTX_LOAD) || (params & G_MTX_PROJECTION)) {
-            continue;
-        }
-        Mtx* m = (Mtx*)g->words.w1;
-        if (m == NULL || m == &gMtxClear || m == gPlayState->billboardMtx) {
-            continue;
-        }
-        MtxF mf;
-        Matrix_MtxToMtxF(m, &mf);
+    VrCombat::ForEachEmittedLoadMatrix(from, to, gPlayState->billboardMtx, [&](Mtx* m, MtxF& mf) {
         VR_RegisterSpaceMatrix(m, anchorM, offset, &mf.mf[0][0], spinDps);
-    }
+    });
 }
 
 } // namespace
@@ -602,9 +558,9 @@ extern "C" void VrItemSelect_Draw(void) {
         return;
     }
     Player* player = GET_PLAYER(gPlayState);
-    // (The physical-archery nock icon is a real in-world model drawn by VrArchery.cpp's own
-    // OnPlayDrawEnd hook, deliberately independent of this function's preview gates.)
-    if (!sOpen) {
+    // (The physical-archery nock marker is drawn by VrArchery.cpp's own OnPlayDrawEnd hook,
+    // deliberately independent of this function's preview gates.)
+    {
         if (!player || !SelectorAvailable() || player->heldItemAction <= PLAYER_IA_NONE ||
             player->heldItemId >= 158 || player->heldActor != NULL ||
             (player->modelGroup != PLAYER_MODELGROUP_DEFAULT &&
@@ -656,29 +612,10 @@ extern "C" void VrItemSelect_Draw(void) {
         camRight.z /= crl;
     }
 
-    const float th = PickThresholdUnits();
-    // Icons sit just past the pick threshold (flick INTO them), with size floors so a short
-    // flick distance doesn't shrink the compass into unreadability.
-    const float ringR = fmaxf(th * 1.5f, 4.5f);
-    const float iconHs = fmaxf(th * 0.55f, 1.6f);
+    const float iconHs = fmaxf(PickThresholdUnits() * 0.55f, 1.6f); // same size as the compass icons
 
-    // Direction -> LOCAL offset from the anchor (lateral along the captured head-right,
-    // vertical along world up) and the item shown there. equips.buttonItems: 0 = B (sword),
-    // 1/2/3 = C-left/down/right.
-    struct SelTarget {
-        int sector;
-        Vec3f at;
-        u8 item;
-    };
-    SelTarget targets[4] = {
-        { SEC_UP, { 0.0f, ringR, 0.0f }, gSaveContext.equips.buttonItems[0] },
-        { SEC_DOWN, { 0.0f, -ringR, 0.0f }, gSaveContext.equips.buttonItems[2] },
-        { SEC_LEFT, { -sHeadRight.x * ringR, 0.0f, -sHeadRight.z * ringR }, gSaveContext.equips.buttonItems[1] },
-        { SEC_RIGHT, { sHeadRight.x * ringR, 0.0f, sHeadRight.z * ringR }, gSaveContext.equips.buttonItems[3] },
-    };
-    if (!sOpen) {
-        targets[0] = { SEC_CENTER, { 0.0f, 0.0f, 0.0f }, player->heldItemId };
-    }
+    // Closed: one icon, the held item, at the anchor. (The open compass has its own drawer.)
+    const u8 heldItem = player->heldItemId;
 
     // Setup: textured XLU billboards, no Z compare or write — the compass is UI, never occluded
     // (and never harvested: the visual-mesh gather requires depth-write). The anchor rides in
@@ -695,46 +632,26 @@ extern "C" void VrItemSelect_Draw(void) {
     gSPClearGeometryMode(p++, G_CULL_BOTH | G_LIGHTING);
     gSPTexture(p++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
 
-    for (int i = 0; i < (sOpen ? 4 : 1); i++) {
-        const bool selected = (sSector == targets[i].sector);
-        const float hs = selected ? iconHs * 1.35f : iconHs;
-        const int base = PushBillboardVtx(targets[i].at, camRight, camUp, hs);
-        if (base < 0) {
-            break;
-        }
-        if (targets[i].item < 158) {
+    const bool selected = sSector == SEC_CENTER;
+    const int base = PushBillboardVtx({ 0.0f, 0.0f, 0.0f }, camRight, camUp, selected ? iconHs * 1.35f : iconHs);
+    if (base >= 0) {
+        if (heldItem < 158) {
             gDPSetCombineMode(p++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
             if (selected) {
                 gDPSetPrimColor(p++, 0, 0, 255, 255, 255, 255);
             } else {
                 gDPSetPrimColor(p++, 0, 0, 165, 165, 165, 185);
             }
-            gDPLoadTextureBlock(p++, gItemIcons[targets[i].item], G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
+            gDPLoadTextureBlock(p++, gItemIcons[heldItem], G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
                                 G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, 5, 5, G_TX_NOLOD,
                                 G_TX_NOLOD);
         } else {
-            // Empty slot (or empty B): a dim placeholder diamond.
+            // Empty hands: a dim placeholder diamond.
             gDPSetCombineMode(p++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
             gDPSetPrimColor(p++, 0, 0, 120, 120, 120, selected ? 160 : 90);
         }
         gSPVertex(p++, (uintptr_t)&sSelVtx[base], 4, 0);
         gSP2Triangles(p++, 0, 1, 2, 0, 2, 1, 3, 0);
-    }
-
-    // Center: a small ring marker at the anchor (empty hands), brighter while it is the pick.
-    if (sOpen) {
-        const int base = PushBillboardVtx({ 0.0f, 0.0f, 0.0f }, camRight, camUp,
-                                          (sSector == SEC_CENTER) ? iconHs * 0.55f : iconHs * 0.35f);
-        if (base >= 0) {
-            gDPSetCombineMode(p++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
-            if (sSector == SEC_CENTER) {
-                gDPSetPrimColor(p++, 0, 0, 255, 250, 210, 235);
-            } else {
-                gDPSetPrimColor(p++, 0, 0, 190, 190, 190, 130);
-            }
-            gSPVertex(p++, (uintptr_t)&sSelVtx[base], 4, 0);
-            gSP2Triangles(p++, 0, 1, 2, 0, 2, 1, 3, 0);
-        }
     }
 
     gSPEndDisplayList(p++);

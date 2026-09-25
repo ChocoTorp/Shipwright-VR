@@ -362,8 +362,8 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
             // (ocarina notes live in the dedicated set below). Everything the triggers used to
             // carry moves:
             // Z-target to the sword-hand grip, the shield stays on the off-hand grip, A and B
-            // on the face buttons. Start is bound on BOTH the left stick click and the left menu
-            // button, because whichever stick click the selector is set to is eaten by it.
+            // on the face buttons. Start is on the left stick click (the left menu button opens the
+            // in-headset settings menu instead, so its binding here never fires).
             // Keep in sync with sVrInputDefsSelector in SohMenuVRSettings.cpp.
             static const char* sVrBindSelCvars[2][6] = {
                 { "gVrBindSelLTrigger", "gVrBindSelLGrip", "gVrBindSelLPrimary", "gVrBindSelLSecondary",
@@ -422,8 +422,8 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                     // chord suspends its inputs' bindings while fully held. While aiming a
                     // projectile (classic mode), the aim hand's trigger is the FIRE control and
                     // its binding is likewise suspended.
-                    // QuestShip: left menu button = hold for the settings menu; its quick tap
-                    // arrives as START on release (VR_TakeStartTap below), never on press.
+                    // QuestShip: the left menu button toggles the in-headset settings menu and is
+                    // never passed to the game.
                     if (VR_MenuConsumesButton(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrItemSelect_ConsumesInput(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
                         VrItemSelect_TriggerConsumed(vrHandIdx, sVrBtnMasks[vrBtnIdx]) ||
@@ -492,10 +492,6 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                     }
                 }
             }
-        }
-
-        if (VR_TakeStartTap()) {
-            vrPad->button |= BTN_START; // quick tap of the left menu button (see above)
         }
 
         // Left thumbstick -> movement (control stick). Overrides only when actually pushed (deadzone),

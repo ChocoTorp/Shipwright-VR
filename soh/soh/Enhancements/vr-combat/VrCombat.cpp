@@ -68,7 +68,7 @@ void OnPlayerUpdateVrCombat() {
     // (walk-while-aiming is plain VR, so its fire input must be too).
     {
         const bool cur =
-            VR_IsInitialized() && VR_GetFirstPerson() && (VR_GetControllerButton(AimHand()) & VR_BTN_TRIGGER);
+            VR_IsInitialized() && VR_GetFirstPerson() && (VR_GetGameButtons(AimHand()) & VR_BTN_TRIGGER);
         sProjTriggerPressed = cur && !sProjTriggerPrev;
         sProjTriggerPrev = cur;
     }

@@ -1,5 +1,6 @@
 #include <string.h>
 #include "global.h"
+#include <vr_interface.h>
 #include "vt.h"
 #include <libultraship/bridge/resourcebridge.h>
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -413,6 +414,10 @@ void GameState_Init(GameState* gameState, GameStateFunc init, GraphicsContext* g
     OSTime endTime;
 
     osSyncPrintf("game コンストラクタ開始\n"); // "game constructor start"
+    // QuestShip: the VR matrix registries are keyed by gfx-pool Mtx addresses and are normally
+    // cleared by Play_Draw. A new game state (soft reset, game over, file select) reuses those pool
+    // addresses, so drop entries left by the previous state before they can hijack its matrices.
+    VR_ClearHandMatrices();
     gameState->gfxCtx = gfxCtx;
     gameState->frames = 0;
     gameState->main = NULL;

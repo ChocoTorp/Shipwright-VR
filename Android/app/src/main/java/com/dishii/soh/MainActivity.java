@@ -530,10 +530,17 @@ public class MainActivity extends SDLActivity{
 
         // QuestShip: off the UI thread. Deleting the old assets folder takes ~13 s on Quest, and an
         // immersive activity gets an ANR for that. Dialogs already post themselves to the UI thread.
-        Executors.newSingleThreadExecutor().execute(() -> {
-            doVersionCheck();
-            checkAndSetupFiles();
-        });
+        // A plain thread (it ends with the task; an executor here was never shut down). If setup
+        // throws, still release the native side instead of leaving it waiting on a black screen.
+        new Thread(() -> {
+            try {
+                doVersionCheck();
+                checkAndSetupFiles();
+            } catch (Throwable t) {
+                Log.e("setupFiles", "Setup failed", t);
+                setupLatch.countDown();
+            }
+        }, "soh-setup").start();
     }
 
     private boolean ensureTargetRootFolderReady(File targetRootFolder) {

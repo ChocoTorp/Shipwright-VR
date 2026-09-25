@@ -1629,17 +1629,38 @@ void SohMenu::AddMenuVRSettings() {
                      .Format("%.0f")
                      .Tooltip("Releasing the string with less draw than this cancels instead of "
                               "firing - no ammo or magic is spent."));
-    AddWidget(devPath, "Nock Icon Size: %.0f%%", WIDGET_CVAR_SLIDER_FLOAT)
-        .CVar("gVrArcheryIconScale")
+    AddWidget(devPath, "Ammo Counter Size: %.1f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrArcheryAmmoSize")
         .Options(FloatSliderOptions()
-                     .Min(3.0f)
-                     .Max(100.0f)
-                     .DefaultValue(25.0f)
+                     .Min(1.0f)
+                     .Max(10.0f)
+                     .DefaultValue(3.0f)
+                     .Step(0.5f)
+                     .Format("%.1f")
+                     .Tooltip("Height of the ammo counter at the nock point. It grows slightly "
+                              "when your string hand is in pinch reach."));
+    AddWidget(devPath, "Landing Ring", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrArcheryTrajectory")
+        .Options(CheckboxOptions()
+                     .DefaultValue(true)
+                     .Tooltip("While the string is drawn, a ring lies on the surface the shot "
+                              "will hit. No ring means it would hit nothing in range."));
+    AddWidget(devPath, "Landing Ring Size: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrArcheryRingSize")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrArcheryTrajectory", 1); })
+        .Options(FloatSliderOptions()
+                     .Min(4.0f)
+                     .Max(40.0f)
+                     .DefaultValue(12.0f)
                      .Step(1.0f)
                      .Format("%.0f")
-                     .Tooltip("Size of the Deku Nut nock-point icon, as a percent of a normal "
-                              "nut drop. Make it as tiny as you like; it still grows slightly "
-                              "when your string hand is in pinch reach."));
+                     .Tooltip("Ring radius up close; it grows with distance so far targets stay visible."));
+    AddWidget(devPath, "Flight Path Line", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrArcheryTrajectoryLine")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrArcheryTrajectory", 1); })
+        .Options(CheckboxOptions()
+                     .DefaultValue(false)
+                     .Tooltip("Also draw the shot's predicted flight path as a thin line."));
     AddWidget(devPath, "String Pull Visual Scale: %.0f", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gVrArcheryStringApex")
         .Options(FloatSliderOptions()

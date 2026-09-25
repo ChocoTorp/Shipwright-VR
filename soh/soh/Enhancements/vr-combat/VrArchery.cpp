@@ -14,6 +14,8 @@ extern PlayState* gPlayState;
 #include "soh/frame_interpolation.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <vr_interface.h>
+#include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstring>
 
@@ -140,11 +142,10 @@ extern "C" void VrArchery_Reset(void) {
     sAimLatchTicks = 0;
 }
 
-Vtx sAmmoVtx[3 * 4]; // QuestShip: ammo digits at the nock point
+static Vtx sAmmoVtx[3 * 4]; // QuestShip: ammo digits at the nock point
 
-// Nock-point icon: a miniature Deku Nut (the classic drop model, gameplay_keep so it is
-// always loaded) rendered in-world at the nock anchor while the bow/slingshot is out and no
-// nock is drawn. It grows when the string hand is in pinch reach. DELIBERATELY minimal gates
+// Nock-point marker: the ammo counter, rendered in-world at the nock anchor while the
+// bow/slingshot is out and no nock is drawn. It grows when the string hand is in pinch reach. DELIBERATELY minimal gates
 // (mode + cvar + weapon out, none of the input-side availability checks): the icon is a
 // tuning target for the anchor sliders and a liveness diagnostic — it must show even when
 // the input gates are the thing that is broken. extern "C" linkage is load-bearing for the
@@ -251,26 +252,34 @@ extern "C" void VrArchery_DrawNockIcon(void) {
     CLOSE_DISPS(gPlayState->state.gfxCtx);
 }
 
-// QuestShip: predicted flight path while the string is drawn — a thin translucent ribbon that
-// follows the projectile's REAL motion (EnArrow_Shoot/EnArrow_Fly): launched along the aim line at
-// 80 (seed) / 150 (arrow) units per tick, moved 1.5x velocity per update, gravity -0.4 only once
-// the flight timer (15 / 12) drops below 7.2, killed at 0. Stops at the first surface it would
-// hit. Camera-facing, fading toward the end, no depth write, masked out of combat collision.
-constexpr int kTrajMaxPts = 16;
-Vtx sTrajVtx[kTrajMaxPts * 3];
-Gfx sTrajDl[96];
+// QuestShip: where the nocked shot will land. The flight is simulated with the projectile's REAL
+// motion (EnArrow_Shoot/EnArrow_Fly): launched along the aim line at 80 (seed) / 150 (arrow) units
+// per tick, moved 1.5x velocity per update, gravity -0.4 only once the flight timer (15 / 12) drops
+// below 7.2, killed at 0, stopped by the first surface. Default display: a flat ring lying on the
+// surface it would hit (nothing when it would hit nothing). gVrArcheryTrajectoryLine adds the
+// flight path as a thin smoothed tube. Both are masked out of combat collision.
+static constexpr int kTrajMaxPts = 16;
+static constexpr int kTrajSub = 3; // Catmull-Rom sub-points per simulated tick segment
+static constexpr int kTrajMaxRings = (kTrajMaxPts - 1) * kTrajSub + 1;
+static Vtx sTrajVtx[kTrajMaxRings * 3];
+static Gfx sTrajDl[16 + (kTrajMaxRings - 1) * 4];
+static constexpr int kRingSegs = 12;
+static Vtx sRingVtx[kRingSegs * 2];
+static Gfx sRingDl[16 + kRingSegs / 2 * 2];
 
-extern "C" void VrArchery_DrawTrajectory(void) {
-    if (gPlayState == NULL || !CVarGetInteger("gVrArcheryTrajectory", 1) || !sNocked) {
-        return;
-    }
-    Player* player = GET_PLAYER(gPlayState);
-    if (player == NULL || !VrArchery_Covers(player)) {
-        return;
-    }
+namespace {
+
+struct TrajSim {
+    Vec3f pts[kTrajMaxPts];
+    int n = 0;
+    bool hit = false;
+    Vec3f normal = { 0.0f, 1.0f, 0.0f };
+};
+
+bool SimulateShot(const Player* player, TrajSim& sim) {
     float seg[6];
     if (!VrArchery_AimSegment(seg)) {
-        return;
+        return false;
     }
     const bool seed = player->heldItemAction == PLAYER_IA_SLINGSHOT;
     const float speed = seed ? 80.0f : 150.0f;
@@ -278,10 +287,8 @@ extern "C" void VrArchery_DrawTrajectory(void) {
     Vec3f pos = { seg[0], seg[1], seg[2] };
     float vx = seg[3] * speed, vy = seg[4] * speed, vz = seg[5] * speed;
     float gravity = 0.0f;
-    Vec3f pts[kTrajMaxPts];
-    int n = 0;
-    pts[n++] = pos;
-    while (n < kTrajMaxPts) {
+    sim.pts[sim.n++] = pos;
+    while (sim.n < kTrajMaxPts) {
         if (--timer <= 0) {
             break;
         }
@@ -293,59 +300,181 @@ extern "C" void VrArchery_DrawTrajectory(void) {
             vy = -150.0f;
         }
         Vec3f next = { pos.x + vx * 1.5f, pos.y + vy * 1.5f, pos.z + vz * 1.5f };
-        Vec3f hit;
+        Vec3f hitPos;
         CollisionPoly* poly = NULL;
         s32 bgId = 0;
-        if (BgCheck_EntityLineTest1(&gPlayState->colCtx, &pos, &next, &hit, &poly, true, true, true, true, &bgId)) {
-            pts[n++] = hit;
+        if (BgCheck_EntityLineTest1(&gPlayState->colCtx, &pos, &next, &hitPos, &poly, true, true, true, true,
+                                    &bgId)) {
+            sim.pts[sim.n++] = hitPos;
+            if (poly != NULL) {
+                sim.hit = true;
+                sim.normal = { COLPOLY_GET_NORMAL(poly->normal.x), COLPOLY_GET_NORMAL(poly->normal.y),
+                               COLPOLY_GET_NORMAL(poly->normal.z) };
+            }
             break;
         }
-        pts[n++] = next;
+        sim.pts[sim.n++] = next;
         pos = next;
     }
-    if (n < 2) {
-        return;
+    return sim.n >= 2;
+}
+
+float DistToEye(const float eye[3], const Vec3f& p) {
+    const float ex = eye[0] - p.x, ey = eye[1] - p.y, ez = eye[2] - p.z;
+    return sqrtf(ex * ex + ey * ey + ez * ez);
+}
+
+void SetupTranslucentShade(Gfx*& p) {
+    gSPVrPhysMask(p++, 1);
+    gDPPipeSync(p++);
+    gDPSetCycleType(p++, G_CYC_1CYCLE);
+    gDPSetRenderMode(p++, G_RM_ZB_XLU_SURF, G_RM_ZB_XLU_SURF2);
+    gDPSetCombineMode(p++, G_CC_SHADE, G_CC_SHADE);
+    gSPTexture(p++, 0, 0, 0, G_TX_RENDERTILE, G_OFF);
+    gSPClearGeometryMode(p++, G_CULL_BOTH | G_LIGHTING | G_FOG);
+    gSPSetGeometryMode(p++, G_SHADE | G_SHADING_SMOOTH);
+}
+
+} // namespace
+
+// C linkage: OPEN_DISPS declares FrameInterpolation_* at block scope, which must resolve to the C
+// functions (inside the anonymous namespace they would get internal C++ names and fail to link).
+extern "C" {
+
+// The landing ring: an annulus in its own unit frame (radius 100), placed by a matrix that is
+// recorded for frame interpolation, so it glides between 20 Hz ticks instead of stepping.
+static void DrawLandingRing(const TrajSim& sim, const float eye[3]) {
+    static bool sBuilt = false;
+    if (!sBuilt) {
+        for (int k = 0; k < kRingSegs; k++) {
+            const float a = (float)k * (2.0f * (float)M_PI / kRingSegs);
+            for (int layer = 0; layer < 2; layer++) {
+                const float rad = layer == 0 ? 100.0f : 62.0f;
+                Vtx& v = sRingVtx[layer * kRingSegs + k];
+                v.v.ob[0] = (s16)lroundf(cosf(a) * rad);
+                v.v.ob[1] = 0;
+                v.v.ob[2] = (s16)lroundf(sinf(a) * rad);
+                v.v.flag = 0;
+                v.v.tc[0] = v.v.tc[1] = 0;
+                v.v.cn[0] = 255;
+                v.v.cn[1] = 255;
+                v.v.cn[2] = 235;
+                v.v.cn[3] = layer == 0 ? 150 : 230;
+            }
+        }
+        Gfx* p = sRingDl;
+        SetupTranslucentShade(p);
+        gSPVertex(p++, (uintptr_t)sRingVtx, kRingSegs * 2, 0);
+        for (int k = 0; k < kRingSegs; k++) {
+            const int o0 = k, o1 = (k + 1) % kRingSegs, i0 = kRingSegs + k, i1 = kRingSegs + o1;
+            gSP2Triangles(p++, o0, o1, i1, 0, o0, i1, i0, 0);
+        }
+        gSPVrPhysMask(p++, 0);
+        gSPEndDisplayList(p++);
+        sBuilt = true;
     }
 
-    float eye[3], fwd[3], up[3];
-    VR_GetCameraPose(eye, fwd, up);
-    // A thin 3-sided TUBE (triangular prism) rather than a camera-facing strip: a flat strip
-    // turns edge-on as the head moves between 20 Hz updates (and differs per eye), so it
-    // flickered thinner/thicker. A tube reads the same from every angle. Radius still scales
-    // with distance so it stays a thin line on screen.
+    // Basis: Y = surface normal, X/Z span the surface.
+    const Vec3f& nrm = sim.normal;
+    Vec3f t = fabsf(nrm.y) < 0.9f ? Vec3f{ nrm.z, 0.0f, -nrm.x } : Vec3f{ 0.0f, -nrm.z, nrm.y }; // n x (up|x)
+    const float tl = sqrtf(t.x * t.x + t.y * t.y + t.z * t.z);
+    if (tl < 1e-4f) {
+        return;
+    }
+    t = { t.x / tl, t.y / tl, t.z / tl };
+    const Vec3f b = { nrm.y * t.z - nrm.z * t.y, nrm.z * t.x - nrm.x * t.z, nrm.x * t.y - nrm.y * t.x };
+    MtxF basis = {};
+    basis.mf[0][0] = t.x, basis.mf[0][1] = t.y, basis.mf[0][2] = t.z;
+    basis.mf[1][0] = nrm.x, basis.mf[1][1] = nrm.y, basis.mf[1][2] = nrm.z;
+    basis.mf[2][0] = b.x, basis.mf[2][1] = b.y, basis.mf[2][2] = b.z;
+    basis.mf[3][3] = 1.0f;
+
+    // Constant physical size up close, then growing with distance so it stays visible far away.
+    const Vec3f& at = sim.pts[sim.n - 1];
+    const float ws = WorldScale();
+    const float baseR = CVarGetFloat("gVrArcheryRingSize", 12.0f) * 0.01f * ws;
+    const float r = fmaxf(baseR, DistToEye(eye, at) * 0.035f);
+    const float lift = 1.5f; // off the surface, against z-fighting
+
+    OPEN_DISPS(gPlayState->state.gfxCtx);
+    FrameInterpolation_RecordOpenChild((const void*)sRingVtx, 0);
+    Matrix_Translate(at.x + nrm.x * lift, at.y + nrm.y * lift, at.z + nrm.z * lift, MTXMODE_NEW);
+    Matrix_Mult(&basis, MTXMODE_APPLY);
+    Matrix_Scale(r / 100.0f, r / 100.0f, r / 100.0f, MTXMODE_APPLY);
+    gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(gPlayState->state.gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
+    gSPDisplayList(POLY_XLU_DISP++, sRingDl);
+    FrameInterpolation_RecordCloseChild();
+    CLOSE_DISPS(gPlayState->state.gfxCtx);
+}
+
+static Vec3f CatmullRom(const Vec3f& p0, const Vec3f& p1, const Vec3f& p2, const Vec3f& p3, float t) {
+    const float t2 = t * t, t3 = t2 * t;
+    const float a = -0.5f * t3 + t2 - 0.5f * t, b = 1.5f * t3 - 2.5f * t2 + 1.0f;
+    const float c = -1.5f * t3 + 2.0f * t2 + 0.5f * t, d = 0.5f * t3 - 0.5f * t2;
+    return { a * p0.x + b * p1.x + c * p2.x + d * p3.x, a * p0.y + b * p1.y + c * p2.y + d * p3.y,
+             a * p0.z + b * p1.z + c * p2.z + d * p3.z };
+}
+
+// The flight path: a thin 3-sided tube (a flat strip turns edge-on as the head moves). Vertices are
+// stored relative to the launch point and pre-scaled so the sub-unit radius survives the s16
+// vertex format (plain world coordinates rounded it to 0 or 1 unit, which made the width jitter).
+static void DrawFlightLine(const TrajSim& sim, const float eye[3]) {
+    Vec3f rings[kTrajMaxRings];
+    int nr = 0;
+    for (int i = 0; i + 1 < sim.n; i++) {
+        const Vec3f& p0 = sim.pts[i > 0 ? i - 1 : 0];
+        const Vec3f& p3 = sim.pts[i + 2 < sim.n ? i + 2 : sim.n - 1];
+        for (int k = 0; k < kTrajSub; k++) {
+            rings[nr++] = CatmullRom(p0, sim.pts[i], sim.pts[i + 1], p3, (float)k / kTrajSub);
+        }
+    }
+    rings[nr++] = sim.pts[sim.n - 1]; // exactly at the hit
+    assert(nr <= kTrajMaxRings);
+
+    const Vec3f& o = rings[0];
+    float extent = 1.0f;
+    float arc[kTrajMaxRings];
+    arc[0] = 0.0f;
+    for (int i = 0; i < nr; i++) {
+        extent = fmaxf(extent, fmaxf(fabsf(rings[i].x - o.x), fmaxf(fabsf(rings[i].y - o.y), fabsf(rings[i].z - o.z))));
+        if (i > 0) {
+            const float dx = rings[i].x - rings[i - 1].x, dy = rings[i].y - rings[i - 1].y,
+                        dz = rings[i].z - rings[i - 1].z;
+            arc[i] = arc[i - 1] + sqrtf(dx * dx + dy * dy + dz * dz);
+        }
+    }
+    const float q = fminf(64.0f, fmaxf(1.0f, floorf(30000.0f / (extent + 4.0f)))); // local units per world unit
+    const float total = fmaxf(arc[nr - 1], 1e-3f);
+    const float fadeIn = 0.06f * WorldScale(); // first ~6 cm fade in from the pouch
     const float widthK = CVarGetFloat("gVrArcheryTrajectoryWidth", 0.0012f);
-    const int alpha0 = CVarGetInteger("gVrArcheryTrajectoryAlpha", 120);
-    for (int i = 0; i < n; i++) {
-        const Vec3f& a = pts[i > 0 ? i - 1 : 0];
-        const Vec3f& b = pts[i > 0 ? i : 1];
+    const int alpha0 = std::clamp(CVarGetInteger("gVrArcheryTrajectoryAlpha", 120), 0, 255);
+    static const float kC[3] = { 1.0f, -0.5f, -0.5f };
+    static const float kS[3] = { 0.0f, 0.8660254f, -0.8660254f };
+    for (int i = 0; i < nr; i++) {
+        const Vec3f& a = rings[i > 0 ? i - 1 : 0];
+        const Vec3f& b = rings[i > 0 ? i : 1];
         float tx = b.x - a.x, ty = b.y - a.y, tz = b.z - a.z;
         const float tl = sqrtf(tx * tx + ty * ty + tz * tz);
         if (tl > 1e-4f) {
-            tx /= tl;
-            ty /= tl;
-            tz /= tl;
+            tx /= tl, ty /= tl, tz /= tl;
         }
         // n1 = tangent x worldUp (fallback X), n2 = tangent x n1
-        float n1x = -tz, n1y = 0.0f, n1z = tx;
+        float n1x = -tz, n1z = tx;
         float n1l = sqrtf(n1x * n1x + n1z * n1z);
         if (n1l < 1e-3f) {
-            n1x = 1.0f;
-            n1z = 0.0f;
-            n1l = 1.0f;
+            n1x = 1.0f, n1z = 0.0f, n1l = 1.0f;
         }
-        n1x /= n1l;
-        n1z /= n1l;
-        const float n2x = ty * n1z - tz * n1y, n2y = tz * n1x - tx * n1z, n2z = tx * n1y - ty * n1x;
-        const float ex = eye[0] - pts[i].x, ey = eye[1] - pts[i].y, ez = eye[2] - pts[i].z;
-        const float r = fmaxf(0.03f, sqrtf(ex * ex + ey * ey + ez * ez) * widthK);
-        const u8 al = (u8)(alpha0 * (1.0f - (float)i / (float)(n - 1)));
-        static const float kC[3] = { 1.0f, -0.5f, -0.5f };
-        static const float kS[3] = { 0.0f, 0.8660254f, -0.8660254f };
+        n1x /= n1l, n1z /= n1l;
+        const float n2x = ty * n1z, n2y = tz * n1x - tx * n1z, n2z = -ty * n1x;
+        const float r = fmaxf(0.03f, DistToEye(eye, rings[i]) * widthK) * q;
+        const float fade = fminf(1.0f, arc[i] / fadeIn) * (1.0f - arc[i] / total);
+        const u8 al = (u8)(alpha0 * fmaxf(0.0f, fade));
+        const float lx = (rings[i].x - o.x) * q, ly = (rings[i].y - o.y) * q, lz = (rings[i].z - o.z) * q;
         for (int k = 0; k < 3; k++) {
             Vtx& v = sTrajVtx[i * 3 + k];
-            v.v.ob[0] = (s16)(pts[i].x + (n1x * kC[k] + n2x * kS[k]) * r);
-            v.v.ob[1] = (s16)(pts[i].y + (n1y * kC[k] + n2y * kS[k]) * r);
-            v.v.ob[2] = (s16)(pts[i].z + (n1z * kC[k] + n2z * kS[k]) * r);
+            v.v.ob[0] = (s16)lroundf(lx + (n1x * kC[k] + n2x * kS[k]) * r);
+            v.v.ob[1] = (s16)lroundf(ly + (n2y * kS[k]) * r);
+            v.v.ob[2] = (s16)lroundf(lz + (n1z * kC[k] + n2z * kS[k]) * r);
             v.v.flag = 0;
             v.v.tc[0] = v.v.tc[1] = 0;
             v.v.cn[0] = 255;
@@ -356,31 +485,26 @@ extern "C" void VrArchery_DrawTrajectory(void) {
     }
 
     Gfx* p = sTrajDl;
-    gSPVrPhysMask(p++, 1);
-    gDPPipeSync(p++);
-    gDPSetCycleType(p++, G_CYC_1CYCLE);
-    gDPSetRenderMode(p++, G_RM_ZB_XLU_SURF, G_RM_ZB_XLU_SURF2);
-    gDPSetCombineMode(p++, G_CC_SHADE, G_CC_SHADE);
-    gSPTexture(p++, 0, 0, 0, G_TX_RENDERTILE, G_OFF);
-    gSPClearGeometryMode(p++, G_CULL_BOTH | G_LIGHTING | G_FOG);
-    gSPSetGeometryMode(p++, G_SHADE | G_SHADING_SMOOTH);
+    SetupTranslucentShade(p);
     {
-        // QuestShip: vertices are world-space at this 20 Hz tick; weld them to the bow hand (live
-        // hand x inverse(hand at this tick)) so the line doesn't trail while walking.
-        Matrix_Translate(0.0f, 0.0f, 0.0f, MTXMODE_NEW);
+        // Vertices are sampled at this 20 Hz tick; weld them to the bow hand (live hand x
+        // inverse(hand at this tick)) so the line doesn't trail while walking.
+        Matrix_Translate(o.x, o.y, o.z, MTXMODE_NEW);
+        Matrix_Scale(1.0f / q, 1.0f / q, 1.0f / q, MTXMODE_APPLY);
         Mtx* lineMtx = MATRIX_NEWMTX(gPlayState->state.gfxCtx);
         float hm[4][4];
         if (VR_GetHandMatrix(BowHand(), hm)) {
-            MtxF hand;
-            MtxF handInv;
+            MtxF hand, handInv, cur, local;
             memcpy(hand.mf, hm, sizeof(hand.mf));
             if (SkinMatrix_Invert(&hand, &handInv) == 0) {
-                VR_RegisterHandChildMatrix((const void*)lineMtx, BowHand(), &handInv.mf[0][0]);
+                Matrix_Get(&cur);
+                SkinMatrix_MtxFMtxFMult(&handInv, &cur, &local);
+                VR_RegisterHandChildMatrix((const void*)lineMtx, BowHand(), &local.mf[0][0]);
             }
         }
         gSPMatrix(p++, lineMtx, G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
     }
-    for (int i = 0; i + 1 < n; i++) {
+    for (int i = 0; i + 1 < nr; i++) {
         // two rings (6 verts): 0-2 this point, 3-5 next; three quads around the tube
         gSPVertex(p++, (uintptr_t)&sTrajVtx[i * 3], 6, 0);
         gSP2Triangles(p++, 0, 1, 3, 0, 1, 4, 3, 0);
@@ -389,15 +513,35 @@ extern "C" void VrArchery_DrawTrajectory(void) {
     }
     gSPVrPhysMask(p++, 0);
     gSPEndDisplayList(p++);
+    assert(p <= sTrajDl + ARRAY_COUNT(sTrajDl));
 
     OPEN_DISPS(gPlayState->state.gfxCtx);
     gSPDisplayList(POLY_XLU_DISP++, sTrajDl);
     CLOSE_DISPS(gPlayState->state.gfxCtx);
 }
 
-// QuestShip: the string (pouch) hand, for drawing the nocked seed in it.
-extern "C" int VrArchery_StringHand(void) {
-    return StringHand();
+} // extern "C"
+
+extern "C" void VrArchery_DrawTrajectory(void) {
+    if (gPlayState == NULL || !CVarGetInteger("gVrArcheryTrajectory", 1) || !sNocked) {
+        return;
+    }
+    Player* player = GET_PLAYER(gPlayState);
+    if (player == NULL || !VrArchery_Covers(player)) {
+        return;
+    }
+    TrajSim sim;
+    if (!SimulateShot(player, sim)) {
+        return;
+    }
+    float eye[3], fwd[3], up[3];
+    VR_GetCameraPose(eye, fwd, up);
+    if (CVarGetInteger("gVrArcheryTrajectoryLine", 0)) {
+        DrawFlightLine(sim, eye);
+    }
+    if (sim.hit) {
+        DrawLandingRing(sim, eye);
+    }
 }
 
 // True while a nock is drawn — the string presentation renders pulled to the string hand.
@@ -532,7 +676,7 @@ void ArcheryTick() {
     }
     if (gPlayState->pauseCtx.state != 0) {
         // Absorb input edges across the pause; state (nocked/idle) resumes on unpause.
-        sPinchPrev = (VR_GetControllerButton(StringHand()) & PinchMask()) != 0;
+        sPinchPrev = (VR_GetGameButtons(StringHand()) & PinchMask()) != 0;
         return;
     }
 
@@ -543,7 +687,7 @@ void ArcheryTick() {
         }
     }
 
-    const bool pinch = (VR_GetControllerButton(StringHand()) & PinchMask()) != 0;
+    const bool pinch = (VR_GetGameButtons(StringHand()) & PinchMask()) != 0;
     const bool pressed = pinch && !sPinchPrev;
     sPinchPrev = pinch;
 
