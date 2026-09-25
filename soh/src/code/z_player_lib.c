@@ -2037,7 +2037,23 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 
             OPEN_DISPS(play->state.gfxCtx);
 
-            gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+            {
+                // QuestShip: weld the bottle to the live hand like the bowstring below; as a plain
+                // matrix it baked the 20 Hz hand pose and trailed the hand while moving.
+                Mtx* vrBottleMtx = MATRIX_NEWMTX(play->state.gfxCtx);
+                s32 vrBottleHand = CVarGetInteger("gVrLeftHanded", 0) ? VR_HAND_LEFT : VR_HAND_RIGHT; // L_HAND limb
+                if (VR_IsInitialized() && VR_GetFirstPerson() &&
+                    (sVrHandLimbFrame[vrBottleHand] == (s32)play->state.frames)) {
+                    MtxF vrCur;
+                    MtxF vrInv;
+                    MtxF vrLocal;
+                    Matrix_Get(&vrCur);
+                    SkinMatrix_Invert(&sVrHandLimbMtxF[vrBottleHand], &vrInv);
+                    SkinMatrix_MtxFMtxFMult(&vrInv, &vrCur, &vrLocal);
+                    VR_RegisterHandChildMatrix((const void*)vrBottleMtx, vrBottleHand, &vrLocal.mf[0][0]);
+                }
+                gSPMatrix(POLY_XLU_DISP++, vrBottleMtx, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+            }
             if (GameInteractor_Should(VB_PLAYER_DRAW_BOTTLE, true, this, play)) {
                 gDPSetEnvColor(POLY_XLU_DISP++, bottleColor->r, bottleColor->g, bottleColor->b, 0);
                 gSPDisplayList(POLY_XLU_DISP++, sBottleDLists[gSaveContext.linkAge]);

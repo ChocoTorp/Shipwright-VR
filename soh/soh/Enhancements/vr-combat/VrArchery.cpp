@@ -264,8 +264,10 @@ static constexpr int kTrajMaxRings = (kTrajMaxPts - 1) * kTrajSub + 1;
 static Vtx sTrajVtx[kTrajMaxRings * 3];
 static Gfx sTrajDl[16 + (kTrajMaxRings - 1) * 4];
 static constexpr int kRingSegs = 12;
-static Vtx sRingVtx[kRingSegs * 2];
-static Gfx sRingDl[16 + kRingSegs / 2 * 2];
+static constexpr int kDotSegs = 8, kDotRings = 3; // center sphere: 8 around, 3 latitude rings
+static constexpr int kDotVerts = kDotSegs * kDotRings + 2;
+static Vtx sRingVtx[kRingSegs * 2 + kDotVerts];
+static Gfx sRingDl[64];
 
 namespace {
 
@@ -275,6 +277,52 @@ struct TrajSim {
     bool hit = false;
     Vec3f normal = { 0.0f, 1.0f, 0.0f };
 };
+
+// Nearest hit of segment a->b against the collision cylinders of enemies, bosses and NPCs (the
+// world line test only sees level geometry). Returns the segment fraction, or 2 for no hit.
+float ActorLineHit(const Vec3f& a, const Vec3f& b, Vec3f& normal) {
+    static const s32 kCats[] = { ACTORCAT_ENEMY, ACTORCAT_BOSS, ACTORCAT_NPC };
+    const float dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+    float best = 2.0f;
+    for (s32 cat : kCats) {
+        for (Actor* ac = gPlayState->actorCtx.actorLists[cat].head; ac != NULL; ac = ac->next) {
+            const float r = ac->colChkInfo.cylRadius, h = ac->colChkInfo.cylHeight;
+            if (r <= 0.0f || h <= 0.0f || ac->update == NULL || ac->draw == NULL) {
+                continue;
+            }
+            const float y0 = ac->world.pos.y + ac->colChkInfo.cylYShift, y1 = y0 + h;
+            const float ox = a.x - ac->world.pos.x, oz = a.z - ac->world.pos.z;
+            if (ox * ox + oz * oz < r * r && a.y >= y0 && a.y <= y1) {
+                continue; // starts inside (shooting from within its cylinder): ignore it
+            }
+            // Side wall: |o + t d|^2 = r^2 in the XZ plane.
+            const float qa = dx * dx + dz * dz, qb = 2.0f * (ox * dx + oz * dz), qc = ox * ox + oz * oz - r * r;
+            const float disc = qb * qb - 4.0f * qa * qc;
+            if (qa > 1e-6f && disc >= 0.0f) {
+                const float t = (-qb - sqrtf(disc)) / (2.0f * qa);
+                const float y = a.y + dy * t;
+                if (t >= 0.0f && t <= 1.0f && t < best && y >= y0 && y <= y1) {
+                    best = t;
+                    const float nx = ox + dx * t, nz = oz + dz * t, nl = sqrtf(nx * nx + nz * nz);
+                    normal = nl > 1e-4f ? Vec3f{ nx / nl, 0.0f, nz / nl } : Vec3f{ 0.0f, 1.0f, 0.0f };
+                }
+            }
+            // Top and bottom caps.
+            if (fabsf(dy) > 1e-6f) {
+                for (int cap = 0; cap < 2; cap++) {
+                    const float cy = cap == 0 ? y1 : y0;
+                    const float t = (cy - a.y) / dy;
+                    const float px = ox + dx * t, pz = oz + dz * t;
+                    if (t >= 0.0f && t <= 1.0f && t < best && px * px + pz * pz <= r * r) {
+                        best = t;
+                        normal = { 0.0f, cap == 0 ? 1.0f : -1.0f, 0.0f };
+                    }
+                }
+            }
+        }
+    }
+    return best;
+}
 
 bool SimulateShot(const Player* player, TrajSim& sim) {
     float seg[6];
@@ -303,8 +351,20 @@ bool SimulateShot(const Player* player, TrajSim& sim) {
         Vec3f hitPos;
         CollisionPoly* poly = NULL;
         s32 bgId = 0;
-        if (BgCheck_EntityLineTest1(&gPlayState->colCtx, &pos, &next, &hitPos, &poly, true, true, true, true,
-                                    &bgId)) {
+        const bool bgHit = BgCheck_EntityLineTest1(&gPlayState->colCtx, &pos, &next, &hitPos, &poly, true, true,
+                                                   true, true, &bgId);
+        const Vec3f segEnd = bgHit ? hitPos : next;
+        // Whatever is nearest wins: an enemy in front of a wall takes the ring.
+        Vec3f actorNormal;
+        const float ta = ActorLineHit(pos, segEnd, actorNormal);
+        if (ta <= 1.0f) {
+            sim.pts[sim.n++] = { pos.x + (segEnd.x - pos.x) * ta, pos.y + (segEnd.y - pos.y) * ta,
+                                 pos.z + (segEnd.z - pos.z) * ta };
+            sim.hit = true;
+            sim.normal = actorNormal;
+            break;
+        }
+        if (bgHit) {
             sim.pts[sim.n++] = hitPos;
             if (poly != NULL) {
                 sim.hit = true;
@@ -332,7 +392,9 @@ void SetupTranslucentShade(Gfx*& p) {
     gDPSetCombineMode(p++, G_CC_SHADE, G_CC_SHADE);
     gSPTexture(p++, 0, 0, 0, G_TX_RENDERTILE, G_OFF);
     gSPClearGeometryMode(p++, G_CULL_BOTH | G_LIGHTING | G_FOG);
-    gSPSetGeometryMode(p++, G_SHADE | G_SHADING_SMOOTH);
+    // G_ZBUFFER: depth-test against the world (without it the state left by earlier draws decides,
+    // and the marker showed through walls and enemies). XLU_SURF never writes depth.
+    gSPSetGeometryMode(p++, G_SHADE | G_SHADING_SMOOTH | G_ZBUFFER);
 }
 
 } // namespace
@@ -346,22 +408,39 @@ extern "C" {
 static void DrawLandingRing(const TrajSim& sim, const float eye[3]) {
     static bool sBuilt = false;
     if (!sBuilt) {
+        auto setVtx = [](Vtx& v, float x, float y, float z, u8 lum, u8 a) {
+            v.v.ob[0] = (s16)lroundf(x);
+            v.v.ob[1] = (s16)lroundf(y);
+            v.v.ob[2] = (s16)lroundf(z);
+            v.v.flag = 0;
+            v.v.tc[0] = v.v.tc[1] = 0;
+            v.v.cn[0] = lum;
+            v.v.cn[1] = lum;
+            v.v.cn[2] = (u8)(lum * 0.92f);
+            v.v.cn[3] = a;
+        };
+        // Band: outer radius 100, inner 81 (a thin ring around the center dot).
         for (int k = 0; k < kRingSegs; k++) {
             const float a = (float)k * (2.0f * (float)M_PI / kRingSegs);
-            for (int layer = 0; layer < 2; layer++) {
-                const float rad = layer == 0 ? 100.0f : 62.0f;
-                Vtx& v = sRingVtx[layer * kRingSegs + k];
-                v.v.ob[0] = (s16)lroundf(cosf(a) * rad);
-                v.v.ob[1] = 0;
-                v.v.ob[2] = (s16)lroundf(sinf(a) * rad);
-                v.v.flag = 0;
-                v.v.tc[0] = v.v.tc[1] = 0;
-                v.v.cn[0] = 255;
-                v.v.cn[1] = 255;
-                v.v.cn[2] = 235;
-                v.v.cn[3] = layer == 0 ? 150 : 230;
+            setVtx(sRingVtx[k], cosf(a) * 100.0f, 0.0f, sinf(a) * 100.0f, 255, 200);
+            setVtx(sRingVtx[kRingSegs + k], cosf(a) * 81.0f, 0.0f, sinf(a) * 81.0f, 255, 235);
+        }
+        // Center dot: a small sphere resting on the surface, shaded from above (no lighting pass).
+        Vtx* dot = &sRingVtx[kRingSegs * 2];
+        const float rad = 22.0f, cy = rad * 0.8f;
+        auto lum = [](float ny) { return (u8)(175.0f + 80.0f * (0.5f + 0.5f * ny)); };
+        setVtx(dot[0], 0.0f, cy + rad, 0.0f, lum(1.0f), 245);
+        for (int r = 0; r < kDotRings; r++) {
+            const float lat = (float)M_PI * (float)(r + 1) / (kDotRings + 1); // from the top
+            const float ny = cosf(lat), ring = sinf(lat);
+            for (int k = 0; k < kDotSegs; k++) {
+                const float a = (float)k * (2.0f * (float)M_PI / kDotSegs);
+                setVtx(dot[1 + r * kDotSegs + k], cosf(a) * ring * rad, cy + ny * rad, sinf(a) * ring * rad, lum(ny),
+                       245);
             }
         }
+        setVtx(dot[kDotVerts - 1], 0.0f, cy - rad, 0.0f, lum(-1.0f), 245);
+
         Gfx* p = sRingDl;
         SetupTranslucentShade(p);
         gSPVertex(p++, (uintptr_t)sRingVtx, kRingSegs * 2, 0);
@@ -369,8 +448,21 @@ static void DrawLandingRing(const TrajSim& sim, const float eye[3]) {
             const int o0 = k, o1 = (k + 1) % kRingSegs, i0 = kRingSegs + k, i1 = kRingSegs + o1;
             gSP2Triangles(p++, o0, o1, i1, 0, o0, i1, i0, 0);
         }
+        gSPVertex(p++, (uintptr_t)dot, kDotVerts, 0);
+        const int bottom = kDotVerts - 1;
+        for (int k = 0; k < kDotSegs; k++) {
+            const int k1 = (k + 1) % kDotSegs;
+            const int lastRing = 1 + (kDotRings - 1) * kDotSegs;
+            gSP2Triangles(p++, 0, 1 + k, 1 + k1, 0, bottom, lastRing + k1, lastRing + k, 0);
+            for (int r = 0; r + 1 < kDotRings; r++) {
+                const int a0 = 1 + r * kDotSegs + k, a1 = 1 + r * kDotSegs + k1;
+                const int b0 = a0 + kDotSegs, b1 = a1 + kDotSegs;
+                gSP2Triangles(p++, a0, b0, b1, 0, a0, b1, a1, 0);
+            }
+        }
         gSPVrPhysMask(p++, 0);
         gSPEndDisplayList(p++);
+        assert(p <= sRingDl + ARRAY_COUNT(sRingDl));
         sBuilt = true;
     }
 
@@ -389,11 +481,13 @@ static void DrawLandingRing(const TrajSim& sim, const float eye[3]) {
     basis.mf[2][0] = b.x, basis.mf[2][1] = b.y, basis.mf[2][2] = b.z;
     basis.mf[3][3] = 1.0f;
 
-    // Constant physical size up close, then growing with distance so it stays visible far away.
+    // Constant physical size within 3 m, then growing gently (square root, capped at 2.5x) so far
+    // targets stay findable without the ring ballooning.
     const Vec3f& at = sim.pts[sim.n - 1];
     const float ws = WorldScale();
     const float baseR = CVarGetFloat("gVrArcheryRingSize", 12.0f) * 0.01f * ws;
-    const float r = fmaxf(baseR, DistToEye(eye, at) * 0.035f);
+    const float grow = std::clamp(sqrtf(DistToEye(eye, at) / (3.0f * ws)), 1.0f, 2.5f);
+    const float r = baseR * grow;
     const float lift = 1.5f; // off the surface, against z-fighting
 
     OPEN_DISPS(gPlayState->state.gfxCtx);

@@ -94,6 +94,18 @@ void Gameplay_SetupTransition(PlayState* play, s32 transitionType) {
 
     memset(transitionCtx, 0, sizeof(TransitionContext));
 
+    // QuestShip: in VR every scene transition is a plain fade, applied to the whole view by the
+    // VR layer (see Play_Draw). Circle, wipe and triforce shapes only make sense on a flat screen.
+    if (VR_IsInitialized()) {
+        if ((transitionType >> 5) == 1) {
+            transitionType = (((transitionType >> 3) & 3) == 1) ? TRANS_TYPE_FADE_WHITE : TRANS_TYPE_FADE_BLACK;
+        } else if (transitionType == TRANS_TYPE_WIPE_FAST) {
+            transitionType = TRANS_TYPE_FADE_BLACK_FAST;
+        } else if (transitionType == TRANS_TYPE_WIPE || transitionType == TRANS_TYPE_TRIFORCE) {
+            transitionType = TRANS_TYPE_FADE_BLACK;
+        }
+    }
+
     transitionCtx->transitionType = transitionType;
 
     // Circle Transition Types
@@ -1564,21 +1576,38 @@ void Play_Draw(PlayState* play) {
             gSPDisplayList(OVERLAY_DISP++, gfxP);
             gSPGrayscale(gfxP++, false);
 
-            if ((play->transitionMode == TRANS_MODE_INSTANCE_RUNNING) ||
-                (play->transitionMode == TRANS_MODE_INSTANCE_WAIT) ||
-                (play->transitionCtx.transitionType >= TRANS_TYPE_MAX)) {
-                View view;
+            const bool instanceActive = (play->transitionMode == TRANS_MODE_INSTANCE_RUNNING) ||
+                                        (play->transitionMode == TRANS_MODE_INSTANCE_WAIT) ||
+                                        (play->transitionCtx.transitionType >= TRANS_TYPE_MAX);
+            if (VR_IsInitialized()) {
+                // QuestShip: in VR these full-screen fades would land on the HUD panel (they are
+                // drawn in the overlay), which looked like a TV screen fading. Hand the fade color
+                // to the VR layer instead, which fades the whole view (world and HUD).
+                Color_RGBA8 c = { 0, 0, 0, 0 };
+                if (instanceActive && play->transitionCtx.init == TransitionFade_Init) {
+                    const TransitionFade* f = &play->transitionCtx.fade;
+                    c = (Color_RGBA8){ f->fadeColor.r, f->fadeColor.g, f->fadeColor.b, f->fadeColor.a };
+                }
+                if (play->transitionFade.fadeColor.a > c.a) {
+                    const TransitionFade* f = &play->transitionFade;
+                    c = (Color_RGBA8){ f->fadeColor.r, f->fadeColor.g, f->fadeColor.b, f->fadeColor.a };
+                }
+                VR_SetTransitionFade(c.r, c.g, c.b, c.a);
+            } else {
+                if (instanceActive) {
+                    View view;
 
-                View_Init(&view, gfxCtx);
-                view.flags = 2 | 8;
+                    View_Init(&view, gfxCtx);
+                    view.flags = 2 | 8;
 
-                SET_FULLSCREEN_VIEWPORT(&view);
+                    SET_FULLSCREEN_VIEWPORT(&view);
 
-                func_800AB9EC(&view, 15, &gfxP);
-                play->transitionCtx.draw(&play->transitionCtx.data, &gfxP);
+                    func_800AB9EC(&view, 15, &gfxP);
+                    play->transitionCtx.draw(&play->transitionCtx.data, &gfxP);
+                }
+
+                TransitionFade_Draw(&play->transitionFade, &gfxP);
             }
-
-            TransitionFade_Draw(&play->transitionFade, &gfxP);
 
             if (gVisMonoColor.a > 0) {
                 gPlayVisMono.vis.primColor.rgba = gVisMonoColor.rgba;

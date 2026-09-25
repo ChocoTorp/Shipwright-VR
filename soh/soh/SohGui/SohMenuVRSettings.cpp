@@ -1,5 +1,6 @@
 #include <climits>
 #include <cstdlib>
+#include <cstring>
 #include "SohMenu.h"
 #include "SohGui.hpp"
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -7,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <vr_interface.h>
 #include <fast/vr_openxr.h>
 
@@ -75,6 +77,20 @@ struct VrInputDef {
     const char* cvar;
     int32_t defaultMask;
 };
+// QuestShip: selector profile START lives on the stick click of the NON-selector hand. Left-handed,
+// the selector moves to the left stick, so START's default moves to the right stick click.
+// Keep in sync with padmgr.c (VrSelStickDefault).
+static int32_t VrInputDefault(const VrInputDef& d) {
+    if (CVarGetInteger("gVrLeftHanded", 0)) {
+        if (strcmp(d.cvar, "gVrBindSelLStickClick") == 0) {
+            return 0;
+        }
+        if (strcmp(d.cvar, "gVrBindSelRStickClick") == 0) {
+            return BTN_START;
+        }
+    }
+    return d.defaultMask;
+}
 static const VrInputDef sVrInputDefsClassic[] = {
     { "L Trigger", "gVrBindLTrigger", BTN_Z },      { "L Grip", "gVrBindLGrip", BTN_R },
     { "X", "gVrBindLPrimary", BTN_CLEFT },          { "Y", "gVrBindLSecondary", BTN_CRIGHT },
@@ -172,7 +188,7 @@ static void VrInputBindingRow(const VrN64RowDef& row) {
     // One removable chip per VR input currently bound to this button.
     for (int i = 0; i < VrInputCount(); i++) {
         const VrInputDef& input = VrInputDefs()[i];
-        int32_t cur = VrInputReserved(i) ? 0 : CVarGetInteger(input.cvar, input.defaultMask);
+        int32_t cur = VrInputReserved(i) ? 0 : CVarGetInteger(input.cvar, VrInputDefault(input));
         if (cur & row.mask) {
             ImGui::SameLine();
             ImGui::PushID(input.cvar);
@@ -216,7 +232,7 @@ static void VrInputBindingRow(const VrN64RowDef& row) {
                         continue; // reserved for using the held item — keep listening
                     }
                     const VrInputDef& input = VrInputDefs()[idx];
-                    CVarSetInteger(input.cvar, CVarGetInteger(input.cvar, input.defaultMask) | row.mask);
+                    CVarSetInteger(input.cvar, CVarGetInteger(input.cvar, VrInputDefault(input)) | row.mask);
                     CVarSave();
                     sVrListenRowMask = 0;
                     break;
@@ -233,7 +249,7 @@ static void VrInputBindingRow(const VrN64RowDef& row) {
             sVrListenPrevStickDir[hand] = dir;
             if (fresh) {
                 const VrInputDef& input = VrInputDefs()[12 + hand * 4 + dir];
-                CVarSetInteger(input.cvar, CVarGetInteger(input.cvar, input.defaultMask) | row.mask);
+                CVarSetInteger(input.cvar, CVarGetInteger(input.cvar, VrInputDefault(input)) | row.mask);
                 CVarSave();
                 sVrListenRowMask = 0;
             }
@@ -267,7 +283,7 @@ static void VrInputBindingRow(const VrN64RowDef& row) {
                     continue;
                 }
                 const VrInputDef& input = VrInputDefs()[i];
-                int32_t cur = CVarGetInteger(input.cvar, input.defaultMask);
+                int32_t cur = CVarGetInteger(input.cvar, VrInputDefault(input));
                 if (!(cur & row.mask)) {
                     if (ImGui::MenuItem(input.label)) {
                         CVarSetInteger(input.cvar, cur | row.mask);
@@ -1486,6 +1502,19 @@ void SohMenu::AddMenuVRSettings() {
                               "halves render cost. The source animation is 20 fps, so the drop "
                               "from 120 to 60 world updates is hard to see; head tracking is "
                               "unaffected."));
+    AddWidget(perfPath, "Test Toggles", WIDGET_SEPARATOR_TEXT);
+    AddWidget(perfPath, "Edge Culling Pullback", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrCullPullback")
+        .Options(CheckboxOptions()
+                     .DefaultValue(true)
+                     .Tooltip("Keeps objects near your face at the edge of vision visible in both "
+                              "eyes. Switch off to compare if parts of the world or sky go missing."));
+    AddWidget(perfPath, "No Mipmaps On Clamped Tiles", WIDGET_CVAR_CHECKBOX)
+        .CVar("gTextureClampNoMips")
+        .Options(CheckboxOptions()
+                     .DefaultValue(false)
+                     .Tooltip("Experimental sky-seam fix: tiles cut from a larger texture sample only "
+                              "the full-detail image. Off by default."));
     AddWidget(perfPath, "Draw HUD Once Per Game Tick", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrHudPerTick")
         .Options(CheckboxOptions()

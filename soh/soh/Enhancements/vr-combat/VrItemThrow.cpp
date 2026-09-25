@@ -236,10 +236,9 @@ extern "C" bool VrItemThrow_DrawNutModel(Actor* actor, PlayState* play) {
             // The hand matrix carries Link's model scale; normalize it out of the nut's size.
             const float handScale = sqrtf(hm[0][0] * hm[0][0] + hm[0][1] * hm[0][1] + hm[0][2] * hm[0][2]);
             const float rel = handScale > 1e-6f ? scale / handScale : scale;
+            // At the hand frame's origin: the grip point, where the empty hand's palm is drawn
+            // (the VR layer centers empty-hand meshes on the grip).
             Matrix_Put(&handMtx);
-            // Sit at the PALM (gVrHandPalm*, model units), not at the hand frame's origin (the wrist).
-            Matrix_Translate(CVarGetFloat("gVrHandPalmX", 0.0f), CVarGetFloat("gVrHandPalmY", 400.0f),
-                             CVarGetFloat("gVrHandPalmZ", 0.0f), MTXMODE_APPLY);
             // A mirrored hand (the sword hand) carries a reflection; undo it for the nut, or its
             // triangles wind backwards and it renders inside-out.
             const float det = hm[0][0] * (hm[1][1] * hm[2][2] - hm[1][2] * hm[2][1]) -

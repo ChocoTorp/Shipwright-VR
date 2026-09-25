@@ -362,7 +362,8 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
             // (ocarina notes live in the dedicated set below). Everything the triggers used to
             // carry moves:
             // Z-target to the sword-hand grip, the shield stays on the off-hand grip, A and B
-            // on the face buttons. Start is on the left stick click (the left menu button opens the
+            // on the face buttons. Start is on the stick click of the hand without the selector (left
+            // stick, or right stick when left-handed; the left menu button opens the
             // in-headset settings menu instead, so its binding here never fires).
             // Keep in sync with sVrInputDefsSelector in SohMenuVRSettings.cpp.
             static const char* sVrBindSelCvars[2][6] = {
@@ -375,6 +376,12 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                 { 0, BTN_R, 0, 0, BTN_START, BTN_START },
                 { 0, BTN_Z, BTN_A, BTN_B, 0, 0 },
             };
+            // QuestShip: START sits on the stick click of the hand WITHOUT the selector, so in
+            // left-handed mode (selector on the left stick) it moves to the right stick click.
+            // Keep in sync with VrInputDefault in SohMenuVRSettings.cpp.
+#define VrSelDefault(hand, btn)                                                                    \
+    (((btn) == 4 && CVarGetInteger("gVrLeftHanded", 0)) ? sVrBindSelDefaults[1 - (hand)][4]     \
+                                                          : sVrBindSelDefaults[(hand)][(btn)])
             // OCARINA (the ocarina interface is up, in EITHER profile): the five notes get their
             // own bindable set, because neither gameplay profile has all five note buttons — in
             // selector mode the C notes had NOTHING to live on, which made the ocarina unplayable.
@@ -437,7 +444,7 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                         s32 mapped = vrOcarina      ? CVarGetInteger(sVrBindOcaCvars[vrHandIdx][vrBtnIdx],
                                                                      sVrBindOcaDefaults[vrHandIdx][vrBtnIdx])
                                      : vrSelProfile ? CVarGetInteger(sVrBindSelCvars[vrHandIdx][vrBtnIdx],
-                                                                     sVrBindSelDefaults[vrHandIdx][vrBtnIdx])
+                                                                     VrSelDefault(vrHandIdx, vrBtnIdx))
                                                     : CVarGetInteger(sVrBindCvars[vrHandIdx][vrBtnIdx],
                                                                      sVrBindDefaults[vrHandIdx][vrBtnIdx]);
                         // Mask to the real pad bits (drops the PC-only modifier bits if selected).

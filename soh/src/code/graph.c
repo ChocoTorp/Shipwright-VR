@@ -330,6 +330,9 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
         extern PlayState* gPlayState;
         s32 vrFlatScreen = (gPlayState == NULL) || (gPlayState->pauseCtx.state != 0);
         VR_SetFlatScreen(vrFlatScreen);
+        if (gPlayState == NULL) {
+            VR_SetTransitionFade(0, 0, 0, 0); // title / file select: no scene fade in effect
+        }
         if (vrFlatScreen) {
             gSPBranchList(POLY_XLU_DISP++, gfxCtx->overlayBuffer);
             VR_SetOverlayDisplayList(NULL);
