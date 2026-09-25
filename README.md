@@ -80,7 +80,23 @@ In order for the game to function, you will require a **legally acquired** ROM f
 
 Custom assets are packed in `.otr` / `.o2r` archive files. To use custom assets on the Quest, place them in the **`SOHVR/mods`** folder on the headset (with SideQuest's file manager) and turn on **Settings > Mod Menu > Enable Mods**.
 
-### Recommended: Djipi's 3DS Experience
+### The mods I play with
+
+| Mod | Where to get it | What it does |
+| - | - | - |
+| **Djipi's 3DS Experience** (all 37 files, including the optional ones) | [GameBanana](https://gamebanana.com/mods/477979), main download `djipi_s_3ds_experience_tot_fix.zip` | Replaces the N64 textures, models and backgrounds with Ocarina of Time 3D's HD look. The "Background Full 3D" files turn the pre-rendered rooms (Link's house, the Market back streets, shops) into real 3D rooms, which matters a lot in VR. |
+
+How I installed it:
+1. Unzipped the download on my computer. It's a folder of 37 files named `Djipi's 3DE - 01 ...` to `Djipi's 3DE - Z ...`.
+2. Copied **every file** into the Quest's `SOHVR/mods` folder with SideQuest's file manager (no subfolders).
+3. Launched the game, opened the settings menu (left menu button) and turned on **Settings > Mod Menu > Enable Mods**.
+4. Played for a few minutes while the game optimized the pack for the Quest (**VR Settings > Performance > Texture Pack** shows the progress), then restarted the game.
+
+Settings I use with it: **Enhancements > Graphics > Increase Actor Draw Distance** set to 4x (you can see across Hyrule Field) and **VR Settings > Performance > Stereo Render Divisor** at 2.
+
+Optional files you can leave out: `24`/`25` (Majora's Mask style chests), `Original N64 HUD Mod` (keeps the N64 HUD), `Z - Crescent Moon Addon`. If you use a custom Link model, delete `02 Link's Textures`.
+
+### About Djipi's 3DS Experience
 A 3DS-style HD texture pack that looks great in VR. It isn't included (it's Djipi's work, made from Nintendo's textures): download it from [GameBanana](https://gamebanana.com/mods/477979) and copy its `.otr` files into `SOHVR/mods`.
 
 The first time you play with it, the game **compresses the pack for the Quest in the background** (a few minutes; progress under **VR Settings > Performance > Texture Pack**). Restart when it says so: from then on it uses about 4x less memory and loads faster. Keep the original pack files installed.
