@@ -29,16 +29,34 @@ Create a free developer account at [developers.meta.com](https://developers.meta
 Install [SideQuest](https://sidequestvr.com/setup-howto) on your computer, connect the Quest by USB (allow USB debugging in the headset), and use **Install APK** to install the `.apk` from [Releases](../../releases).
 
 ### 4. Copy your ROM to the Quest
-With SideQuest's file manager (or Windows File Explorer), put your ROM file in the Quest's **Download** folder.
+With SideQuest's file manager (or Windows File Explorer), put your ROM file in the Quest's **Download** folder. Any file name works: the game recognises it by its contents.
 
 ### 5. Launch the Game!
-In the headset, open **App Library > Unknown Sources > Quest 3: OOT**. When it asks, **check "allow access to edit files on device"**, then go back to the game. **The first boot takes about 1 to 2 minutes and only shows loading dots.** It isn't frozen: it's building the game's data from your ROM, which only happens once.
+In the headset, open **App Library > Unknown Sources > Quest 3: OOT**. When it asks, **check "allow access to edit files on device"**, then go back to the game. **The first boot takes about 1 to 2 minutes and only shows loading dots.** It isn't frozen: the game **finds your ROM by itself** and builds its data from it, which only happens once. Then it just starts. (If it can't find a ROM, a setup screen appears in the headset instead, where you can rescan and pick your ROM.)
 
 ### 6. Play!
 
 Congratulations, you are now sailing with the Ship of Harkinian, in VR! Have fun!
 
 Full step-by-step guide: **[QUEST.md](QUEST.md)**.
+
+# Add the 3D rooms and HD textures (after the game works)
+
+Some places in Ocarina of Time (Link's house, the Market and its back alleys, the shops, the Temple of Time entrance) are flat pre-rendered pictures with the characters walking in front of them. That works on a TV, but not in VR, so in these rooms you see **green backdrops** instead of walls. **Djipi's 3DS Experience** fixes this: it replaces those pictures with real 3D rooms, and upgrades the whole game to Ocarina of Time 3D's HD look.
+
+Do this once the game is installed and running.
+
+1. **Download the pack** from [GameBanana](https://gamebanana.com/mods/477979) (the main download, `djipi_s_3ds_experience_tot_fix.zip`) and unzip it on your computer. You get a folder of 37 files named `Djipi's 3DE - 01 ...` to `Djipi's 3DE - Z ...`.
+2. **Copy the files to the Quest.** Connect the Quest, open SideQuest's file manager, go into **SOHVR**, then **mods**, and drag in **all 37 files** (just the files, no subfolders). The ones that replace the green backdrops are `26`/`27 Background 3DS` and `32`/`33 Background Full 3D`, but the rest are the HD textures and models, so copy them all.
+3. **Turn the mods on.** Launch the game, press the **hamburger button** (left menu button) to open the settings, and turn on **Settings > Mod Menu > Enable Mods**.
+4. **Let it optimize.** The first time you play with the pack, the game compresses it for the Quest in the background, which takes about 3 minutes. You can keep playing; the progress is in **VR Settings > Performance > Texture Pack**.
+5. **Restart once.** When it says "restart the game to use it", quit and launch again. Done: from now on the rooms are 3D and the game uses the compressed textures (about 4x less memory, faster loading).
+
+Keep Djipi's original files in the mods folder: the game still reads a few textures from them. If you add, remove or update pack files later, it notices and re-optimizes by itself.
+
+**Still seeing green backdrops?** Check that `32 Background Full 3D` and `33 Background Full 3D Textures` are in `SOHVR/mods` (not in a subfolder) and that **Enable Mods** is on.
+
+Optional files you can leave out: `24`/`25` (Majora's Mask style chests), `Original N64 HUD Mod` (keeps the N64 HUD), `Z - Crescent Moon Addon`. If you use a custom Link model, delete `02 Link's Textures`.
 
 # Set it up like mine (step by step)
 
@@ -58,11 +76,8 @@ Full step-by-step guide: **[QUEST.md](QUEST.md)**.
 - When it asks, **check "allow access to edit files on device"**, then go back to the game.
 - **The first boot takes about 1 to 2 minutes and only shows loading dots.** Don't worry, it isn't frozen: it's building the game's data from your ROM, which only happens once.
 
-**HD textures (Djipi's 3DS Experience, all 37 files)**
-- Download it from [GameBanana](https://gamebanana.com/mods/477979) and unzip it.
-- In SideQuest's file manager, copy every `.otr` file into **SOHVR/mods** (no subfolders).
-- Launch the game, open settings with the **hamburger button** (left menu button), turn on **Settings > Mod Menu > Enable Mods**.
-- Play for about 3 minutes while it compresses the pack (progress: **VR Settings > Performance > Texture Pack**), then quit and relaunch when it says so.
+**3D rooms and HD textures (Djipi's 3DS Experience, all 37 files)**
+- Follow [Add the 3D rooms and HD textures](#add-the-3d-rooms-and-hd-textures-after-the-game-works) above.
 
 **Settings**
 - **VR Settings > Comfort & Movement:** turning set to **Smooth**.
@@ -118,20 +133,11 @@ Custom assets are packed in `.otr` / `.o2r` archive files. To use custom assets 
 | - | - | - |
 | **Djipi's 3DS Experience** (all 37 files, including the optional ones) | [GameBanana](https://gamebanana.com/mods/477979), main download `djipi_s_3ds_experience_tot_fix.zip` | Replaces the N64 textures, models and backgrounds with Ocarina of Time 3D's HD look. The "Background Full 3D" files turn the pre-rendered rooms (Link's house, the Market back streets, shops) into real 3D rooms, which matters a lot in VR. |
 
-How I installed it:
-1. Unzipped the download on my computer. It's a folder of 37 files named `Djipi's 3DE - 01 ...` to `Djipi's 3DE - Z ...`.
-2. Copied **every file** into the Quest's `SOHVR/mods` folder with SideQuest's file manager (no subfolders).
-3. Launched the game, opened the settings menu (left menu button) and turned on **Settings > Mod Menu > Enable Mods**.
-4. Played for a few minutes while the game optimized the pack for the Quest (**VR Settings > Performance > Texture Pack** shows the progress), then restarted the game.
+How to install it: [Add the 3D rooms and HD textures](#add-the-3d-rooms-and-hd-textures-after-the-game-works).
 
 Settings I use with it: **Enhancements > Graphics > Increase Actor Draw Distance** set to 5x (you can see across Hyrule Field) and **VR Settings > Performance > Stereo Render Divisor** at 2.
 
-Optional files you can leave out: `24`/`25` (Majora's Mask style chests), `Original N64 HUD Mod` (keeps the N64 HUD), `Z - Crescent Moon Addon`. If you use a custom Link model, delete `02 Link's Textures`.
-
-### About Djipi's 3DS Experience
-A 3DS-style HD texture pack that looks great in VR. It isn't included (it's Djipi's work, made from Nintendo's textures): download it from [GameBanana](https://gamebanana.com/mods/477979) and copy its `.otr` files into `SOHVR/mods`.
-
-The first time you play with it, the game **compresses the pack for the Quest in the background** (a few minutes; progress under **VR Settings > Performance > Texture Pack**). Restart when it says so: from then on it uses about 4x less memory and loads faster. Keep the original pack files installed.
+It isn't included in this project (it's Djipi's work, made from Nintendo's textures), which is why you download it yourself.
 
 If you're interested in creating and/or packing your own custom asset files, check out the following tools:
 * [**retro - OTR generator**](https://github.com/HarbourMasters64/retro)

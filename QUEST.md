@@ -40,9 +40,9 @@ This is a Quest port of [Ship of Harkinian VR](https://github.com/ShinyWindow/Sh
 3. **The first boot takes about 1 to 2 minutes and only shows loading dots.** Don't worry, it isn't frozen: it's building the game's data from your ROM, which only happens once. Every launch after that is quick.
 4. The game starts. Have fun!
 
-## Optional: HD textures (Djipi's 3DS Experience)
+## Optional: 3D rooms and HD textures (Djipi's 3DS Experience)
 
-The game looks great with Djipi's 3DS-style texture pack. It isn't included here (it's Djipi's work, made from Nintendo's textures), so download it yourself:
+Some rooms (Link's house, the Market, the shops) are flat pre-rendered pictures in the original game. VR can't show those, so you see **green backdrops** there. Djipi's 3DS Experience replaces them with real 3D rooms and gives the whole game an HD look. It isn't included here (it's Djipi's work, made from Nintendo's textures), so download it yourself:
 
 1. Download **Djipi's 3DS Experience** from GameBanana: [gamebanana.com/mods/477979](https://gamebanana.com/mods/477979) and unzip it on your computer.
 2. In SideQuest's file manager, open **SOHVR**, then **mods**, and drag all the `.otr` files from the pack into it.
