@@ -58,7 +58,7 @@ Some places in Ocarina of Time (Link's house, the Market and its back alleys, th
 2. **Turn the mods on.** Launch the game, press the **hamburger button** (left menu button) to open the settings, and turn on **Settings > Mod Menu > Enable Mods**.
 3. **Walk into Link's house.** It's a real 3D room now.
 
-**Still seeing green backdrops?** Check that files `32` and `33` are directly in `SOHVR/mods` (not in a subfolder) and that **Enable Mods** is on.
+**Still seeing green backdrops, or a room looks wrong?** Check that files `32` and `33` are directly in `SOHVR/mods` (not in a subfolder) and that **Enable Mods** is on. The rooms are tested with the whole pack installed; if something looks off with only these four files, add the rest (Bonus 2).
 
 ## Bonus 2: HD textures (the 3DS look)
 
