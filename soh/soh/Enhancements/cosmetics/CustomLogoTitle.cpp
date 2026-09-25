@@ -21,10 +21,49 @@ extern void Title_SetupView(TitleContext*, f32, f32, f32);
 
 #define LOGO_TO_DRAW_LUS 0
 #define LOGO_TO_DRAW_N64 1
+#define LOGO_TO_DRAW_PORTED 2 // QuestShip: "ported by" signature, between the LUS and N64 logos
+
+#include "QuestShipPortedBy.h"
+
+// QuestShip: the signature as one centered picture (the whole image in one wide load), faded like
+// the other boot logos by the shared cover fill drawn afterwards.
+extern "C" void CustomLogoTitle_DrawPortedBy(TitleContext* titleContext) {
+    OPEN_DISPS(titleContext->state.gfxCtx);
+    constexpr int w = QUESTSHIP_PORTED_BY_W, h = QUESTSHIP_PORTED_BY_H;
+    constexpr int drawW = 260;                  // on the 320x240 screen
+    constexpr int drawH = drawW * h / w;
+    constexpr int x0 = (SCREEN_WIDTH - drawW) / 2, y0 = (SCREEN_HEIGHT - drawH) / 2;
+    Gfx_SetupDL_39Opa(titleContext->state.gfxCtx);
+    gDPPipeSync(POLY_OPA_DISP++);
+    gDPSetCycleType(POLY_OPA_DISP++, G_CYC_1CYCLE);
+    gDPSetRenderMode(POLY_OPA_DISP++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+    gDPSetCombineMode(POLY_OPA_DISP++, G_CC_DECALRGBA, G_CC_DECALRGBA);
+    gDPSetTextureFilter(POLY_OPA_DISP++, G_TF_BILERP);
+    gDPSetTextureImage(POLY_OPA_DISP++, G_IM_FMT_RGBA, G_IM_SIZ_32b, 1, gQuestShipPortedByTex);
+    gDPSetTile(POLY_OPA_DISP++, G_IM_FMT_RGBA, G_IM_SIZ_32b, 0, 0, G_TX_LOADTILE, 0, G_TX_NOMIRROR | G_TX_CLAMP,
+               G_TX_NOMASK, G_TX_NOLOD, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOLOD);
+    gDPLoadSync(POLY_OPA_DISP++);
+    gDPLoadBlockWide(POLY_OPA_DISP, G_TX_LOADTILE, 0, 0, w * h - 1, 0);
+    POLY_OPA_DISP += 2;
+    gDPPipeSync(POLY_OPA_DISP++);
+    gDPSetTile(POLY_OPA_DISP++, G_IM_FMT_RGBA, G_IM_SIZ_32b, ((w * 4) + 7) >> 3 >> 1, 0, G_TX_RENDERTILE, 0,
+               G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOLOD);
+    gDPSetTileSize(POLY_OPA_DISP++, G_TX_RENDERTILE, 0, 0, (w - 1) << G_TEXTURE_IMAGE_FRAC,
+                   (h - 1) << G_TEXTURE_IMAGE_FRAC);
+    gSPTextureRectangle(POLY_OPA_DISP++, x0 << 2, y0 << 2, (x0 + drawW) << 2, (y0 + drawH) << 2, G_TX_RENDERTILE, 0,
+                        0, (w << 10) / drawW, (h << 10) / drawH);
+    Environment_FillScreen(titleContext->state.gfxCtx, 0, 0, 0, static_cast<u8>(titleContext->coverAlpha),
+                           FILL_SCREEN_XLU);
+    CLOSE_DISPS(titleContext->state.gfxCtx);
+}
 
 static bool shouldDrawIceOnSpinningLogo = false;
 
 extern "C" void CustomLogoTitle_Draw(TitleContext* titleContext, uint8_t logoToDraw) {
+    if (logoToDraw == LOGO_TO_DRAW_PORTED) {
+        CustomLogoTitle_DrawPortedBy(titleContext);
+        return;
+    }
     static s16 sTitleRotY = 0;
     static Lights1 sTitleLights = gdSPDefLights1(0x64, 0x64, 0x64, 0xFF, 0xFF, 0xFF, 0x45, 0x45, 0x45);
 
@@ -129,6 +168,8 @@ extern "C" void CustomLogoTitle_Main(TitleContext* titleContext) {
     if (CVAR_BOOTSEQUENCE_VALUE == BOOTSEQUENCE_DEFAULT) {
         if (logosSeen == 0) {
             logoToDraw = LOGO_TO_DRAW_LUS;
+        } else if (logosSeen == 1) {
+            logoToDraw = LOGO_TO_DRAW_PORTED;
         } else {
             logoToDraw = LOGO_TO_DRAW_N64;
         }
@@ -154,11 +195,11 @@ extern "C" void CustomLogoTitle_Main(TitleContext* titleContext) {
 
         logosSeen++;
 
-        if (CVAR_BOOTSEQUENCE_VALUE == BOOTSEQUENCE_DEFAULT && logosSeen == 1) {
+        if (CVAR_BOOTSEQUENCE_VALUE == BOOTSEQUENCE_DEFAULT && (logosSeen == 1 || logosSeen == 2)) {
             SET_NEXT_GAMESTATE(&titleContext->state, Title_Init, TitleContext);
         }
 
-        if ((CVAR_BOOTSEQUENCE_VALUE == BOOTSEQUENCE_DEFAULT && logosSeen == 2) ||
+        if ((CVAR_BOOTSEQUENCE_VALUE == BOOTSEQUENCE_DEFAULT && logosSeen == 3) ||
             (CVAR_BOOTSEQUENCE_VALUE == BOOTSEQUENCE_AUTHENTIC)) {
             SET_NEXT_GAMESTATE(&titleContext->state, Opening_Init, OpeningContext);
             logosSeen = 0;
