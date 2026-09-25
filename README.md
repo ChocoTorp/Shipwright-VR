@@ -40,6 +40,41 @@ Congratulations, you are now sailing with the Ship of Harkinian, in VR! Have fun
 
 Full step-by-step guide: **[QUEST.md](QUEST.md)**.
 
+# Set it up like mine (step by step)
+
+**One-time Quest setup**
+- Create a free developer account at [developers.meta.com](https://developers.meta.com/horizon/).
+- In the **Meta Horizon** phone app: **Devices > Headset settings > Developer mode**, turn it on, then restart the Quest.
+- On a computer, install **SideQuest (Advanced Installer)** from [sidequestvr.com](https://sidequestvr.com/setup-howto).
+- Plug the Quest in by USB, put it on, and choose **Allow** (tick "always allow") for USB debugging.
+
+**Install the game**
+- Download the latest `Quest3-OOT-*.apk` from [Releases](../../releases).
+- In SideQuest, click **Install APK** and pick that file.
+- In SideQuest's file manager, drag your own Ocarina of Time ROM (`.z64`) into the Quest's **Download** folder.
+
+**First launch**
+- In the headset: **App Library > Unknown Sources > Quest 3: OOT**.
+- If asked, allow access to all files.
+- Wait through about 1 to 2 minutes of loading dots while it builds the game data (only the first time).
+
+**HD textures (Djipi's 3DS Experience, all 37 files)**
+- Download it from [GameBanana](https://gamebanana.com/mods/477979) and unzip it.
+- In SideQuest's file manager, copy every `.otr` file into **SOHVR/mods** (no subfolders).
+- Launch the game, open settings with the **hamburger button** (left menu button), turn on **Settings > Mod Menu > Enable Mods**.
+- Play for about 3 minutes while it compresses the pack (progress: **VR Settings > Performance > Texture Pack**), then quit and relaunch when it says so.
+
+**Settings**
+- **VR Settings > Comfort & Movement:** turning set to **Smooth**.
+- **VR Settings > Performance > Stereo Render Divisor:** **1** (the world redraws every frame; set 2 if a busy area feels choppy, see below).
+- **Enhancements > Graphics > Increase Actor Draw Distance:** **5x**.
+- **Left-handed mode:** off (right hand is the sword hand).
+- **VR Settings > VR Inputs** (selector profile): left grip = **Z-target**, right grip = **shield (R)**, **Y = pause (Start)**, left stick click = **L**.
+- **Extra Settings Menu Button:** **None** (the hamburger always opens settings).
+- **VR Settings > Items & Archery:** Landing Target **on**, Flight Path Line **off**.
+
+**What the Stereo Render Divisor does:** at **1**, the game redraws the 3D world for every frame the headset shows (72 per second), so animation and movement are fully smooth. At **2**, it redraws the world every other frame, and the headset fills the frames in between by shifting the last image to match your head. Head tracking stays at full speed either way, but the world itself animates at half rate, and the game needs about half the processing power. Keep it at 1, and switch to 2 only if a busy area starts to stutter.
+
 # Configuration
 
 ### Default VR controls
@@ -89,7 +124,7 @@ How I installed it:
 3. Launched the game, opened the settings menu (left menu button) and turned on **Settings > Mod Menu > Enable Mods**.
 4. Played for a few minutes while the game optimized the pack for the Quest (**VR Settings > Performance > Texture Pack** shows the progress), then restarted the game.
 
-Settings I use with it: **Enhancements > Graphics > Increase Actor Draw Distance** set to 4x (you can see across Hyrule Field) and **VR Settings > Performance > Stereo Render Divisor** at 2.
+Settings I use with it: **Enhancements > Graphics > Increase Actor Draw Distance** set to 5x (you can see across Hyrule Field) and **VR Settings > Performance > Stereo Render Divisor** at 1.
 
 Optional files you can leave out: `24`/`25` (Majora's Mask style chests), `Original N64 HUD Mod` (keeps the N64 HUD), `Z - Crescent Moon Addon`. If you use a custom Link model, delete `02 Link's Textures`.
 
