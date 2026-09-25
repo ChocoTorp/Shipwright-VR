@@ -7,9 +7,6 @@
 - You need your own copy of the game (ROM). No game assets are included.
 - This is a Quest port of [Ship of Harkinian VR](https://github.com/ShinyWindow/Shipwright-VR) by ShinyWindow. For the PC VR version (DirectX 11, SteamVR), use his repo.
 
-![Ship of Harkinian](docs/shiptitle.darkmode.png#gh-dark-mode-only)
-![Ship of Harkinian](docs/shiptitle.lightmode.png#gh-light-mode-only)
-
 ## Download
 
 Get the latest APK from this repo's **[Releases](../../releases)** page.
