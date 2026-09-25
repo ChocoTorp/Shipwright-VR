@@ -34,6 +34,10 @@ static const std::map<int32_t, const char*> vrTurnStyleOptions = {
     { 1, "Smooth" },
 };
 
+static const std::map<int32_t, const char*> vrMenuButtonOptions = {
+    { 0, "Left Menu Button" }, { 1, "Left Stick Click" }, { 2, "Right Stick Click" }, { 3, "X" },
+    { 4, "Y" },                { 5, "A" },                { 6, "B" },
+};
 static const std::map<int32_t, const char*> vrHudAttachOptions = {
     { 0, "Head (Floating)" },
     { 1, "Left Hand" },
@@ -1582,6 +1586,13 @@ void SohMenu::AddMenuVRSettings() {
     AddSidebarEntry("VR Settings", "VR Inputs", 1);
     WidgetPath buttonsPath = { "VR Settings", "VR Inputs", SECTION_COLUMN_1 };
 
+    AddWidget(buttonsPath, "Settings Menu Button", WIDGET_CVAR_COMBOBOX)
+        .CVar("gVrMenuButton")
+        .Options(ComboboxOptions()
+                     .DefaultIndex(0)
+                     .ComboMap(vrMenuButtonOptions)
+                     .Tooltip("The controller button that opens and closes this settings menu in the "
+                              "headset. That button is no longer passed to the game."));
     AddWidget(buttonsPath, "VrInputBindings", WIDGET_CUSTOM).CustomFunction(VrInputBindings).HideInSearch(true);
 
     AddWidget(buttonsPath, "Item Select (Half-Life: Alyx Style)", WIDGET_SEPARATOR_TEXT);
@@ -1686,13 +1697,15 @@ void SohMenu::AddMenuVRSettings() {
                      .Format("%.1f")
                      .Tooltip("Height of the ammo counter at the nock point. It grows slightly "
                               "when your string hand is in pinch reach."));
-    AddWidget(devPath, "Landing Ring", WIDGET_CVAR_CHECKBOX)
+    AddWidget(devPath, "Archery Targeting", WIDGET_SEPARATOR_TEXT);
+    AddWidget(devPath, "Landing Target", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrArcheryTrajectory")
         .Options(CheckboxOptions()
                      .DefaultValue(true)
-                     .Tooltip("While the string is drawn, a ring lies on the surface the shot "
-                              "will hit. No ring means it would hit nothing in range."));
-    AddWidget(devPath, "Landing Ring Size: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
+                     .Tooltip("While the string is drawn, a ring with a dot lies on whatever the shot "
+                              "will hit: an enemy, a wall or the ground. No ring means it would hit "
+                              "nothing in range."));
+    AddWidget(devPath, "Landing Target Size: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gVrArcheryRingSize")
         .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrArcheryTrajectory", 1); })
         .Options(FloatSliderOptions()
@@ -1701,13 +1714,14 @@ void SohMenu::AddMenuVRSettings() {
                      .DefaultValue(12.0f)
                      .Step(1.0f)
                      .Format("%.0f")
-                     .Tooltip("Ring radius up close; it grows with distance so far targets stay visible."));
+                     .Tooltip("Target radius up close; it grows gently with distance so far targets "
+                              "stay visible."));
     AddWidget(devPath, "Flight Path Line", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrArcheryTrajectoryLine")
-        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrArcheryTrajectory", 1); })
         .Options(CheckboxOptions()
                      .DefaultValue(false)
-                     .Tooltip("Also draw the shot's predicted flight path as a thin line."));
+                     .Tooltip("While the string is drawn, show the shot's predicted flight path as a "
+                              "thin line."));
     AddWidget(devPath, "String Pull Visual Scale: %.0f", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar("gVrArcheryStringApex")
         .Options(FloatSliderOptions()

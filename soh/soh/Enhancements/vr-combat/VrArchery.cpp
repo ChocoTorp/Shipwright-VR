@@ -670,7 +670,10 @@ static void DrawFlightLine(const TrajSim& sim, const float eye[3]) {
 } // extern "C"
 
 extern "C" void VrArchery_DrawTrajectory(void) {
-    if (gPlayState == NULL || !CVarGetInteger("gVrArcheryTrajectory", 1) || !sNocked) {
+    // Two independent toggles: the landing target (ring + dot) and the flight path line.
+    const bool showTarget = CVarGetInteger("gVrArcheryTrajectory", 1) != 0;
+    const bool showLine = CVarGetInteger("gVrArcheryTrajectoryLine", 0) != 0;
+    if (gPlayState == NULL || (!showTarget && !showLine) || !sNocked) {
         return;
     }
     Player* player = GET_PLAYER(gPlayState);
@@ -683,10 +686,10 @@ extern "C" void VrArchery_DrawTrajectory(void) {
     }
     float eye[3], fwd[3], up[3];
     VR_GetCameraPose(eye, fwd, up);
-    if (CVarGetInteger("gVrArcheryTrajectoryLine", 0)) {
+    if (showLine) {
         DrawFlightLine(sim, eye);
     }
-    if (sim.hit) {
+    if (showTarget && sim.hit) {
         DrawLandingRing(sim, eye);
     }
 }

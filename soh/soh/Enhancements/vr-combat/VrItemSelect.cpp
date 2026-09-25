@@ -425,11 +425,29 @@ void PinEmittedMatrices(Gfx* from, Gfx* to, const float anchorM[3], const float 
     });
 }
 
-// QuestShip: held items that the player model shows nothing for (the trade animals and the eggs)
+// QuestShip: held items that the player model shows nothing for (Zelda's letter and the child and
+// adult trading-sequence items)
 // appear as their 3D get-item model in the hand, welded to the live hand like the Deku Nut.
 bool IsHandModelItem(u8 item) {
-    return item == ITEM_WEIRD_EGG || item == ITEM_CHICKEN || item == ITEM_POCKET_EGG || item == ITEM_POCKET_CUCCO ||
-           item == ITEM_COJIRO;
+    switch (item) {
+        case ITEM_WEIRD_EGG:
+        case ITEM_CHICKEN:
+        case ITEM_LETTER_ZELDA:
+        case ITEM_POCKET_EGG:
+        case ITEM_POCKET_CUCCO:
+        case ITEM_COJIRO:
+        case ITEM_ODD_MUSHROOM:
+        case ITEM_ODD_POTION:
+        case ITEM_SAW:
+        case ITEM_SWORD_BROKEN:
+        case ITEM_PRESCRIPTION:
+        case ITEM_FROG:
+        case ITEM_EYEDROPS:
+        case ITEM_CLAIM_CHECK:
+            return true;
+        default:
+            return false;
+    }
 }
 
 } // namespace
@@ -633,16 +651,34 @@ extern "C" void VrItemSelect_Draw(void) {
         // on the level, 0.25 m below the head) so it rides with the headset at render rate
         // instead of trailing at the 20 Hz game rate while walking.
         float headM[3], fwdM[3];
-        if (atPreview && player->heldItemAction == PLAYER_IA_DEKU_NUT && CVarGetInteger("gVrNutModel", 1) &&
-            VR_GetHeadPosePhysical(headM, fwdM)) {
+        // QuestShip: Deku Nuts, bombs and bombchus waiting to be grabbed all show as their 3D model.
+        s16 previewGid = -1;
+        s32 previewAmmo = 0;
+        switch (player->heldItemAction) {
+            case PLAYER_IA_DEKU_NUT:
+                previewGid = GID_NUTS;
+                previewAmmo = AMMO(ITEM_NUT);
+                break;
+            case PLAYER_IA_BOMB:
+                previewGid = GID_BOMB;
+                previewAmmo = AMMO(ITEM_BOMB);
+                break;
+            case PLAYER_IA_BOMBCHU:
+                previewGid = GID_BOMBCHU;
+                previewAmmo = AMMO(ITEM_BOMBCHU);
+                break;
+            default:
+                break;
+        }
+        if (atPreview && previewGid >= 0 && CVarGetInteger("gVrNutModel", 1) && VR_GetHeadPosePhysical(headM, fwdM)) {
             const float anchorM[3] = { headM[0] + fwdM[0] * 0.4f, headM[1] - 0.25f, headM[2] + fwdM[2] * 0.4f };
             static const float kZero[3] = { 0.0f, 0.0f, 0.0f };
             const float sc = CVarGetFloat("gVrNutModelScale", 0.06f);
             OPEN_DISPS(gPlayState->state.gfxCtx);
             VrCombat_MeshMaskPush(gPlayState->state.gfxCtx);
-            // Out of nuts: the same nut at 30% opacity. The (opaque) model is emitted into the
-            // translucent list, after the world, with G_VRALPHA around it.
-            const bool empty = AMMO(ITEM_NUT) <= 0;
+            // Out of ammo: the same model at 30% opacity. The (opaque-only) model is emitted into
+            // the translucent list, after the world, with G_VRALPHA around it.
+            const bool empty = previewAmmo <= 0;
             Gfx* savedOpa = nullptr;
             if (empty) {
                 gSPVrAlpha(POLY_XLU_DISP++, 77);
@@ -653,7 +689,7 @@ extern "C" void VrItemSelect_Draw(void) {
             Gfx* xluStart = POLY_XLU_DISP;
             Matrix_Translate(0.0f, 0.0f, 0.0f, MTXMODE_NEW);
             Matrix_Scale(sc, sc, sc, MTXMODE_APPLY);
-            GetItem_Draw(gPlayState, GID_NUTS); // draws into the OPA list only
+            GetItem_Draw(gPlayState, previewGid); // nut, bomb and bombchu models draw into the OPA list only
             PinEmittedMatrices(opaStart, POLY_OPA_DISP, anchorM, kZero, 40.0f);
             if (empty) {
                 POLY_XLU_DISP = POLY_OPA_DISP;

@@ -23,6 +23,13 @@ extern "C" {
 #include "variables.h"
 }
 
+#if defined(__ANDROID__)
+static const std::map<int32_t, const char*> vrMenuButtonOptions = {
+    { 0, "Left Menu Button" }, { 1, "Left Stick Click" }, { 2, "Right Stick Click" }, { 3, "X" },
+    { 4, "Y" },                { 5, "A" },                { 6, "B" },
+};
+#endif
+
 namespace SohGui {
 
 extern std::shared_ptr<SohMenu> mSohMenu;
@@ -563,6 +570,16 @@ void SohMenu::AddMenuSettings() {
                 nullptr);
         })
         .Options(ButtonOptions().Size(Sizes::Inline));
+#if defined(__ANDROID__)
+    AddWidget(path, "VR", WIDGET_SEPARATOR_TEXT);
+    AddWidget(path, "Settings Menu Button", WIDGET_CVAR_COMBOBOX)
+        .CVar("gVrMenuButton")
+        .Options(ComboboxOptions()
+                     .DefaultIndex(0)
+                     .ComboMap(vrMenuButtonOptions)
+                     .Tooltip("The controller button that opens and closes this settings menu in the "
+                              "headset. That button is no longer passed to the game."));
+#endif
     AddWidget(path, "Controller Bindings", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Popout Bindings Window", WIDGET_WINDOW_BUTTON)
         .CVar(CVAR_WINDOW("ControllerConfiguration"))
