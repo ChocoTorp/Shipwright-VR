@@ -278,45 +278,98 @@ struct TrajSim {
     Vec3f normal = { 0.0f, 1.0f, 0.0f };
 };
 
-// Nearest hit of segment a->b against the collision cylinders of enemies, bosses and NPCs (the
-// world line test only sees level geometry). Returns the segment fraction, or 2 for no hit.
-float ActorLineHit(const Vec3f& a, const Vec3f& b, Vec3f& normal) {
-    static const s32 kCats[] = { ACTORCAT_ENEMY, ACTORCAT_BOSS, ACTORCAT_NPC };
-    const float dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+// Segment a + t*d (t in [0,1]) against a sphere; fraction of the first entry, or 2.
+float SegSphere(const Vec3f& a, float dx, float dy, float dz, const Vec3f& c, float r, Vec3f& normal) {
+    const float ox = a.x - c.x, oy = a.y - c.y, oz = a.z - c.z;
+    const float qa = dx * dx + dy * dy + dz * dz, qb = 2.0f * (ox * dx + oy * dy + oz * dz);
+    const float qc = ox * ox + oy * oy + oz * oz - r * r;
+    if (qc <= 0.0f || qa < 1e-6f) {
+        return 2.0f; // starts inside (or no motion): ignore
+    }
+    const float disc = qb * qb - 4.0f * qa * qc;
+    if (disc < 0.0f) {
+        return 2.0f;
+    }
+    const float t = (-qb - sqrtf(disc)) / (2.0f * qa);
+    if (t < 0.0f || t > 1.0f) {
+        return 2.0f;
+    }
+    normal = { (ox + dx * t) / r, (oy + dy * t) / r, (oz + dz * t) / r };
+    return t;
+}
+
+// Segment against a vertical cylinder (side wall and caps); fraction or 2.
+float SegCylinder(const Vec3f& a, float dx, float dy, float dz, float cx, float cz, float y0, float y1, float r,
+                  Vec3f& normal) {
+    const float ox = a.x - cx, oz = a.z - cz;
+    if (ox * ox + oz * oz < r * r && a.y >= y0 && a.y <= y1) {
+        return 2.0f; // starts inside: ignore
+    }
     float best = 2.0f;
-    for (s32 cat : kCats) {
-        for (Actor* ac = gPlayState->actorCtx.actorLists[cat].head; ac != NULL; ac = ac->next) {
-            const float r = ac->colChkInfo.cylRadius, h = ac->colChkInfo.cylHeight;
-            if (r <= 0.0f || h <= 0.0f || ac->update == NULL || ac->draw == NULL) {
+    const float qa = dx * dx + dz * dz, qb = 2.0f * (ox * dx + oz * dz), qc = ox * ox + oz * oz - r * r;
+    const float disc = qb * qb - 4.0f * qa * qc;
+    if (qa > 1e-6f && disc >= 0.0f) {
+        const float t = (-qb - sqrtf(disc)) / (2.0f * qa);
+        const float y = a.y + dy * t;
+        if (t >= 0.0f && t <= 1.0f && y >= y0 && y <= y1) {
+            best = t;
+            const float nx = ox + dx * t, nz = oz + dz * t, nl = sqrtf(nx * nx + nz * nz);
+            normal = nl > 1e-4f ? Vec3f{ nx / nl, 0.0f, nz / nl } : Vec3f{ 0.0f, 1.0f, 0.0f };
+        }
+    }
+    if (fabsf(dy) > 1e-6f) {
+        for (int cap = 0; cap < 2; cap++) {
+            const float cy = cap == 0 ? y1 : y0;
+            const float t = (cy - a.y) / dy;
+            const float px = ox + dx * t, pz = oz + dz * t;
+            if (t >= 0.0f && t <= 1.0f && t < best && px * px + pz * pz <= r * r) {
+                best = t;
+                normal = { 0.0f, cap == 0 ? 1.0f : -1.0f, 0.0f };
+            }
+        }
+    }
+    return best;
+}
+
+// Nearest hit of segment a->b against the hurtboxes shots actually hit: this frame's active AC
+// colliders (enemies, bosses, switches, ...), excluding Link's own. Returns the fraction, or 2.
+float ActorLineHit(const Vec3f& a, const Vec3f& b, Vec3f& normal) {
+    const float dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+    const Player* player = GET_PLAYER(gPlayState);
+    CollisionCheckContext* cc = &gPlayState->colChkCtx;
+    float best = 2.0f;
+    for (s32 i = 0; i < cc->colACCount; i++) {
+        Collider* col = cc->colAC[i];
+        if (col == NULL || !(col->acFlags & AC_ON) || col->actor == NULL || col->actor == &player->actor ||
+            col->actor->category == ACTORCAT_PLAYER) {
+            continue;
+        }
+        Vec3f n;
+        if (col->shape == COLSHAPE_CYLINDER) {
+            const ColliderCylinder* cyl = (const ColliderCylinder*)col;
+            if (!(cyl->info.bumperFlags & BUMP_ON) || cyl->dim.radius <= 0) {
                 continue;
             }
-            const float y0 = ac->world.pos.y + ac->colChkInfo.cylYShift, y1 = y0 + h;
-            const float ox = a.x - ac->world.pos.x, oz = a.z - ac->world.pos.z;
-            if (ox * ox + oz * oz < r * r && a.y >= y0 && a.y <= y1) {
-                continue; // starts inside (shooting from within its cylinder): ignore it
+            const float y0 = cyl->dim.pos.y + cyl->dim.yShift;
+            const float t = SegCylinder(a, dx, dy, dz, cyl->dim.pos.x, cyl->dim.pos.z, y0, y0 + cyl->dim.height,
+                                        cyl->dim.radius, n);
+            if (t < best) {
+                best = t;
+                normal = n;
             }
-            // Side wall: |o + t d|^2 = r^2 in the XZ plane.
-            const float qa = dx * dx + dz * dz, qb = 2.0f * (ox * dx + oz * dz), qc = ox * ox + oz * oz - r * r;
-            const float disc = qb * qb - 4.0f * qa * qc;
-            if (qa > 1e-6f && disc >= 0.0f) {
-                const float t = (-qb - sqrtf(disc)) / (2.0f * qa);
-                const float y = a.y + dy * t;
-                if (t >= 0.0f && t <= 1.0f && t < best && y >= y0 && y <= y1) {
-                    best = t;
-                    const float nx = ox + dx * t, nz = oz + dz * t, nl = sqrtf(nx * nx + nz * nz);
-                    normal = nl > 1e-4f ? Vec3f{ nx / nl, 0.0f, nz / nl } : Vec3f{ 0.0f, 1.0f, 0.0f };
+        } else if (col->shape == COLSHAPE_JNTSPH) {
+            const ColliderJntSph* js = (const ColliderJntSph*)col;
+            for (s32 k = 0; k < js->count; k++) {
+                const ColliderJntSphElement* e = &js->elements[k];
+                if (!(e->info.bumperFlags & BUMP_ON) || e->dim.worldSphere.radius <= 0) {
+                    continue;
                 }
-            }
-            // Top and bottom caps.
-            if (fabsf(dy) > 1e-6f) {
-                for (int cap = 0; cap < 2; cap++) {
-                    const float cy = cap == 0 ? y1 : y0;
-                    const float t = (cy - a.y) / dy;
-                    const float px = ox + dx * t, pz = oz + dz * t;
-                    if (t >= 0.0f && t <= 1.0f && t < best && px * px + pz * pz <= r * r) {
-                        best = t;
-                        normal = { 0.0f, cap == 0 ? 1.0f : -1.0f, 0.0f };
-                    }
+                const Vec3f c = { (f32)e->dim.worldSphere.center.x, (f32)e->dim.worldSphere.center.y,
+                                  (f32)e->dim.worldSphere.center.z };
+                const float t = SegSphere(a, dx, dy, dz, c, e->dim.worldSphere.radius, n);
+                if (t < best) {
+                    best = t;
+                    normal = n;
                 }
             }
         }

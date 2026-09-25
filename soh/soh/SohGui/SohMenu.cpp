@@ -114,12 +114,20 @@ void SohMenu::AddMenuElements() {
     AddMenuVRSettings();
     AddMenuEnhancements();
     AddMenuRandomizer();
+#if defined(__ANDROID__)
+    // QuestShip: no Network (online services) or Dev Tools sections, and no search (no keyboard),
+    // in the standalone Quest build; also drop sidebars that only apply to phones or desktops.
+    for (const char* sidebar : { "Touch Controls", "Input Viewer" }) {
+        std::erase(menuEntries["Settings"].sidebarOrder, std::string(sidebar));
+    }
+#else
     AddMenuNetwork();
     AddMenuDevTools();
 
     if (CVarGetInteger(CVAR_SETTING("Menu.SidebarSearch"), 0)) {
         InsertSidebarSearch();
     }
+#endif
 
     for (auto& initFunc : MenuInit::GetInitFuncs()) {
         initFunc();

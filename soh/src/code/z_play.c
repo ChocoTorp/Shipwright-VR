@@ -1504,7 +1504,10 @@ void Play_Draw(PlayState* play) {
             Camera* vrCam = GET_ACTIVE_CAM(play);
             VR_SetFirstPerson(false);
             sVrFirstPersonWasActive = false;
-            VR_SetCameraAnchor(vrCam->eye.x, vrCam->eye.y, vrCam->eye.z);
+            // QuestShip: the title screen's flyover sits the viewer at ground level (looking the
+            // wrong way showed under the terrain); lift just that camera by 1 m.
+            const f32 vrTitleLift = (gSaveContext.gameMode == GAMEMODE_TITLE_SCREEN) ? VR_GetWorldScale() : 0.0f;
+            VR_SetCameraAnchor(vrCam->eye.x, vrCam->eye.y + vrTitleLift, vrCam->eye.z);
             VR_SetCameraYaw(vrCam->camDir.y);
         }
     }

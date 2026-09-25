@@ -425,7 +425,62 @@ void PinEmittedMatrices(Gfx* from, Gfx* to, const float anchorM[3], const float 
     });
 }
 
+// QuestShip: held items that the player model shows nothing for (the trade animals and the eggs)
+// appear as their 3D get-item model in the hand, welded to the live hand like the Deku Nut.
+bool IsHandModelItem(u8 item) {
+    return item == ITEM_WEIRD_EGG || item == ITEM_CHICKEN || item == ITEM_POCKET_EGG || item == ITEM_POCKET_CUCCO ||
+           item == ITEM_COJIRO;
+}
+
 } // namespace
+
+// C linkage: OPEN_DISPS declares FrameInterpolation_* at block scope, which must resolve to the C
+// functions (inside the anonymous namespace they would not link).
+extern "C" {
+static bool DrawItemModelInHand(Player* player, u8 item, int hand) {
+    const GetItemID gi = RetrieveGetItemIDFromItemID((ItemID)item);
+    float hm[4][4];
+    if (gi == GI_NONE || !VR_GetHandMatrix(hand, hm)) {
+        return false;
+    }
+    const GetItemEntry entry = ItemTable_Retrieve(gi);
+    MtxF handMtx, handInv;
+    memcpy(handMtx.mf, hm, sizeof(handMtx.mf));
+    if (SkinMatrix_Invert(&handMtx, &handInv) != 0) {
+        return false;
+    }
+    // Normalize out Link's model scale, and undo a mirrored hand's reflection (or the model
+    // would render inside-out), as for the held Deku Nut.
+    const float handScale = sqrtf(hm[0][0] * hm[0][0] + hm[0][1] * hm[0][1] + hm[0][2] * hm[0][2]);
+    // The animals read small at the eggs' size: 1.5x.
+    const bool animal = item == ITEM_CHICKEN || item == ITEM_POCKET_CUCCO || item == ITEM_COJIRO;
+    const float sc = CVarGetFloat("gVrHeldItemModelScale", 0.06f) * (animal ? 1.5f : 1.0f);
+    const float rel = handScale > 1e-6f ? sc / handScale : sc;
+    const float det = hm[0][0] * (hm[1][1] * hm[2][2] - hm[1][2] * hm[2][1]) -
+                      hm[0][1] * (hm[1][0] * hm[2][2] - hm[1][2] * hm[2][0]) +
+                      hm[0][2] * (hm[1][0] * hm[2][1] - hm[1][1] * hm[2][0]);
+    OPEN_DISPS(gPlayState->state.gfxCtx);
+    VrCombat_MeshMaskPush(gPlayState->state.gfxCtx);
+    Gfx* opaStart = POLY_OPA_DISP;
+    Gfx* xluStart = POLY_XLU_DISP;
+    Matrix_Put(&handMtx); // the grip point, where the empty hand's palm is drawn
+    Matrix_Scale(rel, rel, rel * (det < 0.0f ? -1.0f : 1.0f), MTXMODE_APPLY);
+    GetItemEntry_Draw(gPlayState, entry);
+    auto weld = [&](Gfx* from, Gfx* to) {
+        VrCombat::ForEachEmittedLoadMatrix(from, to, gPlayState->billboardMtx, [&](Mtx* m, MtxF& cur) {
+            MtxF local;
+            SkinMatrix_MtxFMtxFMult(&handInv, &cur, &local);
+            VR_RegisterHandChildMatrix((const void*)m, hand, &local.mf[0][0]);
+        });
+    };
+    weld(opaStart, POLY_OPA_DISP);
+    weld(xluStart, POLY_XLU_DISP);
+    VrCombat_MeshMaskPop(gPlayState->state.gfxCtx);
+    CLOSE_DISPS(gPlayState->state.gfxCtx);
+    return true;
+}
+
+} // extern "C"
 
 // QuestShip: the open compass, locked in physical space where the hand was when the hold started.
 // Items show as small spinning 3D models (the same GetItem models Link holds overhead); items
@@ -568,6 +623,10 @@ extern "C" void VrItemSelect_Draw(void) {
         float position[3], rotation[4];
         const bool atPreview = VrItemThrow_PreviewPosition(position);
         if (!atPreview && !VR_GetHandPose(SwordHand(), position, rotation)) return;
+        if (!atPreview && IsHandModelItem(player->heldItemId) && CVarGetInteger("gVrHeldItemModels", 1) &&
+            DrawItemModelInHand(player, player->heldItemId, SwordHand())) {
+            return;
+        }
         sAnchor = { position[0], position[1], position[2] };
         // QuestShip: a Deku Nut waiting to be grabbed is the 3D nut, gently turning, not an icon.
         // Anchored in PHYSICAL space (same spot VrItemThrow_PreviewPosition computes: 0.4 m ahead
@@ -581,13 +640,28 @@ extern "C" void VrItemSelect_Draw(void) {
             const float sc = CVarGetFloat("gVrNutModelScale", 0.06f);
             OPEN_DISPS(gPlayState->state.gfxCtx);
             VrCombat_MeshMaskPush(gPlayState->state.gfxCtx);
+            // Out of nuts: the same nut at 30% opacity. The (opaque) model is emitted into the
+            // translucent list, after the world, with G_VRALPHA around it.
+            const bool empty = AMMO(ITEM_NUT) <= 0;
+            Gfx* savedOpa = nullptr;
+            if (empty) {
+                gSPVrAlpha(POLY_XLU_DISP++, 77);
+                savedOpa = POLY_OPA_DISP;
+                POLY_OPA_DISP = POLY_XLU_DISP;
+            }
             Gfx* opaStart = POLY_OPA_DISP;
             Gfx* xluStart = POLY_XLU_DISP;
             Matrix_Translate(0.0f, 0.0f, 0.0f, MTXMODE_NEW);
             Matrix_Scale(sc, sc, sc, MTXMODE_APPLY);
-            GetItem_Draw(gPlayState, GID_NUTS);
+            GetItem_Draw(gPlayState, GID_NUTS); // draws into the OPA list only
             PinEmittedMatrices(opaStart, POLY_OPA_DISP, anchorM, kZero, 40.0f);
-            PinEmittedMatrices(xluStart, POLY_XLU_DISP, anchorM, kZero, 40.0f);
+            if (empty) {
+                POLY_XLU_DISP = POLY_OPA_DISP;
+                POLY_OPA_DISP = savedOpa;
+                gSPVrAlpha(POLY_XLU_DISP++, 255);
+            } else {
+                PinEmittedMatrices(xluStart, POLY_XLU_DISP, anchorM, kZero, 40.0f);
+            }
             VrCombat_MeshMaskPop(gPlayState->state.gfxCtx);
             CLOSE_DISPS(gPlayState->state.gfxCtx);
             return;
@@ -637,7 +711,9 @@ extern "C" void VrItemSelect_Draw(void) {
     if (base >= 0) {
         if (heldItem < 158) {
             gDPSetCombineMode(p++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-            if (selected) {
+            if (player->heldItemAction == PLAYER_IA_DEKU_NUT && AMMO(ITEM_NUT) <= 0) {
+                gDPSetPrimColor(p++, 0, 0, 255, 255, 255, 77); // out of nuts: 30% opacity
+            } else if (selected) {
                 gDPSetPrimColor(p++, 0, 0, 255, 255, 255, 255);
             } else {
                 gDPSetPrimColor(p++, 0, 0, 165, 165, 165, 185);

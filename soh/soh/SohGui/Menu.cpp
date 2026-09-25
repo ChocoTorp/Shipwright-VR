@@ -6,6 +6,7 @@
 #include <ship/window/gui/GuiElement.h>
 #include "SohModals.h"
 #include <variant>
+#include <set>
 #include <spdlog/fmt/fmt.h>
 #include <tuple>
 
@@ -292,7 +293,32 @@ std::unordered_map<uint32_t, disabledInfo>& Menu::GetDisabledMap() {
     return disabledMap;
 }
 
+#if defined(__ANDROID__)
+// QuestShip: settings that do nothing (or harm) in the standalone Quest build: desktop window,
+// renderer, audio-backend and mouse options, save states (break across load zones), Beta Quest,
+// and search (no keyboard in the headset). Matched by widget label.
+static bool QuestHiddenWidget(const std::string& name) {
+    static const std::set<std::string> kHidden = {
+        "Allow background inputs", "Cursor Always Visible", "Search In Sidebar", "Search Input Autofocus",
+        "Audio API (Needs reload)", "Toggle Fullscreen", "Internal Resolution", "Anti-aliasing (MSAA)",
+        "Current FPS", "Match Refresh Rate", "Renderer API (Needs reload)", "Enable Vsync", "Windowed Fullscreen",
+        "Allow multi-windows", "Popout Bindings Window", "Popout Mod Menu Window", "Clear Devices",
+        "Save States", "I promise I have read the warning", "I understand, enable save states",
+        "These are NOT like emulator states. They do not save your game progress and they WILL break across "
+        "transitions and load zones (like doors). Support for related issues will not be provided.",
+        ICON_FA_EXCLAMATION_TRIANGLE " WARNING!!!! " ICON_FA_EXCLAMATION_TRIANGLE,
+        "Beta Quest", "Enable Beta Quest", "Beta Quest World: %d",
+    };
+    return kHidden.contains(name);
+}
+#endif
+
 void Menu::MenuDrawItem(WidgetInfo& widget, uint32_t width, UIWidgets::Colors menuThemeIndex) {
+#if defined(__ANDROID__)
+    if (QuestHiddenWidget(widget.name)) {
+        return;
+    }
+#endif
     disabledTempTooltip = "This setting is disabled because: \n";
     disabledValue = false;
     disabledTooltip = " ";
@@ -673,7 +699,11 @@ void Menu::DrawElement() {
     float centerX = pos.x + windowWidth / 2 - (style.ItemSpacing.x * (menuEntries.size() + 1));
     std::vector<ImVec2> headerSizes;
     float headerWidth = 0.0f;
+#if defined(__ANDROID__)
+    bool headerSearch = false; // QuestShip: no keyboard in the headset
+#else
     bool headerSearch = !CVarGetInteger(CVAR_SETTING("Menu.SidebarSearch"), 0);
+#endif
     if (headerSearch) {
         headerWidth += 200.0f;
     }

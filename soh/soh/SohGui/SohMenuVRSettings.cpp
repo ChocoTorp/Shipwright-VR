@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <cstring>
 #include "SohMenu.h"
+#include <ship/resource/archive/TexturePackOptimizer.h>
 #include "SohGui.hpp"
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <imgui.h>
@@ -1502,6 +1503,23 @@ void SohMenu::AddMenuVRSettings() {
                               "halves render cost. The source animation is 20 fps, so the drop "
                               "from 120 to 60 world updates is hard to see; head tracking is "
                               "unaffected."));
+    AddWidget(perfPath, "Texture Pack", WIDGET_SEPARATOR_TEXT);
+    AddWidget(perfPath, "Optimize Texture Packs For Quest", WIDGET_CVAR_CHECKBOX)
+        .CVar("gTexturePackOptimize")
+        .Options(CheckboxOptions()
+                     .DefaultValue(true)
+                     .Tooltip("After you add an HD texture pack to the mods folder, the game compresses "
+                              "it for the Quest's GPU in the background while you play (a few minutes). "
+                              "From the next launch it uses about 4x less memory and loads faster. The "
+                              "original pack must stay installed."));
+    AddWidget(perfPath, "TexturePackStatus", WIDGET_CUSTOM)
+        .CustomFunction([](WidgetInfo& info) {
+            const std::string status = Ship::TexturePackOptimizer::Status();
+            if (!status.empty()) {
+                ImGui::TextWrapped("%s", status.c_str());
+            }
+        })
+        .HideInSearch(true);
     AddWidget(perfPath, "Test Toggles", WIDGET_SEPARATOR_TEXT);
     AddWidget(perfPath, "Edge Culling Pullback", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrCullPullback")
@@ -1587,8 +1605,8 @@ void SohMenu::AddMenuVRSettings() {
     // Dev Test Items: the sandbox for in-development physical-item work (bombs/nuts, archery,
     // and whatever item lands next). Calibration lives here, deliberately separate from the
     // stable input settings, so the mess stays contained while items are being tuned.
-    AddSidebarEntry("VR Settings", "Dev Test Items", 1);
-    WidgetPath devPath = { "VR Settings", "Dev Test Items", SECTION_COLUMN_1 };
+    AddSidebarEntry("VR Settings", "Items & Archery", 1);
+    WidgetPath devPath = { "VR Settings", "Items & Archery", SECTION_COLUMN_1 };
     AddWidget(devPath, "Bombs & Nuts", WIDGET_SEPARATOR_TEXT);
     AddWidget(devPath, "Physical Bomb and Nut Throws", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrPhysicalItemThrows")

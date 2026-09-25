@@ -673,9 +673,15 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                             std::filesystem::exists(Ship::Context::LocateFileAcrossAppDirs("oot.o2r", appShortName));
 
                         if (!ootO2RExists) {
+#ifdef __ANDROID__
+                            // QuestShip: Android dialogs are invisible inside a VR app. Go straight
+                            // to looking for the player's ROM on the device (PS_LOCAL).
+                            promptStep = PS_LOCAL;
+#else
                             SohGui::RegisterPopup(
                                 "No O2R Files", "No O2R files found. Generate one now?", "Yes", "No",
                                 [&]() { promptStep = PS_LOCAL; }, [&]() { exit(0); });
+#endif
                         } else {
                             extractStep = ES_VERIFY;
                         }
@@ -683,9 +689,40 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                     }
                     case PS_LOCAL: {
 #ifdef __ANDROID__
-                        // On Android, skip auto-discovery and use file picker instead
-                        promptStep = PS_FIRST;
-                        continue;
+                        {
+                            // QuestShip: find the ROM without any dialog. Players copy it to the app
+                            // folder or the Download folder (USB or SideQuest). Keep only files that
+                            // are supported ROMs, one vanilla and one Master Quest at most, so no
+                            // error or "extract again?" popup (invisible in VR) can stall startup.
+                            std::vector<std::string> found;
+                            for (const std::string& dir :
+                                 { dataPath, std::string("/storage/emulated/0/Download"), std::string("/sdcard/Download") }) {
+                                extract = Extractor();
+                                extract.SetSearchPath(dir);
+                                extract.GetRoms(found);
+                            }
+                            bool haveVanilla = false, haveMQ = false;
+                            for (const std::string& rom : found) {
+                                Extractor probe;
+                                if (!probe.RunFileStandalone(rom)) {
+                                    SPDLOG_INFO("[Setup] skipping {} (not a supported ROM)", rom);
+                                    continue;
+                                }
+                                bool& have = probe.IsMasterQuest() ? haveMQ : haveVanilla;
+                                if (!have) {
+                                    have = true;
+                                    args.push_back(rom);
+                                    SPDLOG_INFO("[Setup] extracting game data from {}", rom);
+                                }
+                            }
+                            if (!args.empty()) {
+                                extractStep = ES_EXTRACT_ARGS;
+                            } else {
+                                SPDLOG_WARN("[Setup] no supported ROM in the app or Download folder");
+                                promptStep = PS_FIRST; // fall back to the system file picker
+                            }
+                            continue;
+                        }
 #endif
                         extract = Extractor();
                         extract.SetSearchPath(installPath);

@@ -7,6 +7,7 @@
 #include <ship/utils/StringHelper.h>
 
 #include "mod_menu.h"
+#include <ship/resource/archive/TexturePackOptimizer.h>
 #include "soh/OTRGlobals.h"
 #include "soh/util.h"
 #include "soh/SohGui/MenuTypes.h"
@@ -213,6 +214,11 @@ void UpdateModFiles(bool init = false, bool reset = false) {
     std::string modsPath = Ship::Context::LocateFileAcrossAppDirs("mods", appShortName);
     std::map<std::string, std::string> tempMods;
     if (modsPath.length() > 0 && std::filesystem::exists(modsPath)) {
+        // QuestShip: drop an optimized texture archive that no longer matches the installed packs,
+        // before the scan below can enable it.
+        if (init) {
+            Ship::TexturePackOptimizer::PrepareAtBoot(modsPath);
+        }
         std::vector<std::filesystem::path> enabledFiles;
         if (std::filesystem::is_directory(modsPath)) {
             for (const std::filesystem::directory_entry& p : std::filesystem::recursive_directory_iterator(
@@ -241,13 +247,20 @@ void UpdateModFiles(bool init = false, bool reset = false) {
             }
             if (init) {
                 std::vector<std::string> enabledTemp(enabledModFiles);
+                std::vector<std::string> loadOrder;
                 for (std::string mod : enabledTemp) {
                     if (filePaths.contains(mod)) {
                         GetArchiveManager()->AddArchive(filePaths.at(mod).generic_string());
+                        loadOrder.push_back(filePaths.at(mod).generic_string());
                     } else {
                         enabledModFiles.erase(std::find(enabledModFiles.begin(), enabledModFiles.end(), mod));
                         changed = true;
                     }
+                }
+                // QuestShip: compress installed HD texture packs to ASTC in the background (used from
+                // the next launch). The generated archive sorts last, so it loads after the packs.
+                if (CVarGetInteger("gTexturePackOptimize", 1)) {
+                    Ship::TexturePackOptimizer::StartIfNeeded(modsPath, loadOrder);
                 }
             }
         }
