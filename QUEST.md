@@ -46,7 +46,7 @@ Some rooms (Link's house, the Market, the shops) are flat pre-rendered pictures 
 
 1. Download **Djipi's 3DS Experience** from GameBanana: [gamebanana.com/mods/477979](https://gamebanana.com/mods/477979) and unzip it on your computer.
 2. In SideQuest's file manager, open **SOHVR**, then **mods**, and drag all the `.otr` files from the pack into it.
-3. Launch the game. In the settings menu (left menu button), go to **Settings > Mod Menu** and make sure **Enable Mods** is on.
+3. Launch the game (restart it if it was running). Mods are on by default; if the pack doesn't show, check **Settings > Mod Menu > Enable Mods** (open settings with the left menu button).
 4. **Automatic Quest optimization:** the first time you play with the pack, the game compresses it for the Quest's GPU in the background while you play. It takes a few minutes. You can watch the progress in **VR Settings > Performance > Texture Pack**. When it says "restart the game to use it", quit and relaunch. From then on the pack uses about 4 times less memory and areas load faster. Keep Djipi's original files installed: the game still reads a few textures from them.
 
 If you add, remove or update pack files later, the game notices and re-optimizes automatically.

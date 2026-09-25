@@ -55,18 +55,17 @@ Some places in Ocarina of Time (Link's house, the Market and its back alleys, th
    - `Djipi's 3DE - 27 Background Textures`
    - `Djipi's 3DE - 32 Background Full 3D (OPTIONAL)`
    - `Djipi's 3DE - 33 Background Full 3D Textures (OPTIONAL)`
-2. **Turn the mods on.** Launch the game, press the **hamburger button** (left menu button) to open the settings, and turn on **Settings > Mod Menu > Enable Mods**.
-3. **Walk into Link's house.** It's a real 3D room now.
+2. **Launch the game** (restart it if it was running) and **walk into Link's house.** It's a real 3D room now. Mods are on by default, so there's nothing to switch on.
 
-**Still seeing green backdrops, or a room looks wrong?** Check that files `32` and `33` are directly in `SOHVR/mods` (not in a subfolder) and that **Enable Mods** is on. The rooms are tested with the whole pack installed; if something looks off with only these four files, add the rest (Bonus 2).
+**Still seeing green backdrops, or a room looks wrong?** Check that files `32` and `33` are directly in `SOHVR/mods` (not in a subfolder) and that **Settings > Mod Menu > Enable Mods** is on (open settings with the hamburger button). The rooms are tested with the whole pack installed; if something looks off with only these four files, add the rest (Bonus 2).
 
 ## Bonus 2: HD textures (the 3DS look)
 
 Replaces the whole game's N64 textures and models with Ocarina of Time 3D's HD versions: characters, enemies, items, dungeons and Hyrule Field.
 
 1. **Copy the rest of the pack.** In SideQuest's file manager, drag **all 37 files** into **SOHVR/mods** (the four room files from Bonus 1 are part of it, so this covers both bonuses).
-2. **Turn the mods on** (same as above): **Settings > Mod Menu > Enable Mods**.
-3. **Let it optimize.** The first time you play with the pack, the game compresses it for the Quest in the background, which takes about 3 minutes. You can keep playing; the progress is in **VR Settings > Performance > Texture Pack**.
+2. **Launch the game** (restart it if it was running).
+3. **Let it optimize.** About 30 seconds after you start playing with a new pack, the game begins compressing it for the Quest in the background, which takes about 3 minutes. You can keep playing; the progress is in **VR Settings > Performance > Texture Pack**.
 4. **Restart once.** When it says "restart the game to use it", quit and launch again. From then on it uses about 4x less memory and loads faster.
 
 Keep Djipi's original files in the mods folder: the game still reads a few textures from them. If you add, remove or update pack files later, it notices and re-optimizes by itself.
