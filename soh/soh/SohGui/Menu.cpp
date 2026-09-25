@@ -302,7 +302,7 @@ static bool QuestHiddenWidget(const std::string& name) {
         "Allow background inputs", "Cursor Always Visible", "Search In Sidebar", "Search Input Autofocus",
         "Audio API (Needs reload)", "Toggle Fullscreen", "Internal Resolution", "Anti-aliasing (MSAA)",
         "Current FPS", "Match Refresh Rate", "Renderer API (Needs reload)", "Enable Vsync", "Windowed Fullscreen",
-        "Allow multi-windows", "Popout Bindings Window", "Popout Mod Menu Window", "Clear Devices",
+        "Allow multi-windows", "Popout Bindings Window", "Clear Devices",
         "Save States", "I promise I have read the warning", "I understand, enable save states",
         "These are NOT like emulator states. They do not save your game progress and they WILL break across "
         "transitions and load zones (like doors). Support for related issues will not be provided.",

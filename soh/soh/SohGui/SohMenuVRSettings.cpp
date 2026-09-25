@@ -105,10 +105,10 @@ static const VrInputDef sVrInputDefsClassic[] = {
     { "R Stick", "gVrBindRStickClick", 0 },         { "R Menu", "gVrBindRMenu", 0 },
 };
 static const VrInputDef sVrInputDefsSelector[] = {
-    { "L Trigger", "gVrBindSelLTrigger", 0 },              { "L Grip", "gVrBindSelLGrip", BTN_R },
-    { "X", "gVrBindSelLPrimary", 0 },                      { "Y", "gVrBindSelLSecondary", 0 },
-    { "L Stick", "gVrBindSelLStickClick", BTN_START },     { "L Menu", "gVrBindSelLMenu", BTN_START },
-    { "R Trigger", "gVrBindSelRTrigger", 0 },              { "R Grip", "gVrBindSelRGrip", BTN_Z },
+    { "L Trigger", "gVrBindSelLTrigger", 0 },              { "L Grip", "gVrBindSelLGrip", BTN_Z },
+    { "X", "gVrBindSelLPrimary", 0 },                      { "Y", "gVrBindSelLSecondary", BTN_START },
+    { "L Stick", "gVrBindSelLStickClick", BTN_L },         { "L Menu", "gVrBindSelLMenu", 0 },
+    { "R Trigger", "gVrBindSelRTrigger", 0 },              { "R Grip", "gVrBindSelRGrip", BTN_R },
     { "A", "gVrBindSelRPrimary", BTN_A },                  { "B", "gVrBindSelRSecondary", BTN_B },
     { "R Stick", "gVrBindSelRStickClick", 0 },             { "R Menu", "gVrBindSelRMenu", 0 },
 };

@@ -378,8 +378,62 @@ typedef enum PromptSteps {
     PS_SECOND,
     PS_DUPE,
     PS_WAIT,
+    PS_VR_SELECT, // QuestShip: in-headset "select your ROM" screen (no ROM found automatically)
     PS_NONE,
 } PromptSteps;
+
+#ifdef __ANDROID__
+// QuestShip: ROM discovery for the standalone Quest build. Files are recognised by content, never by
+// name: anything ending in .z64/.n64/.v64, or any file of a ROM's exact size, anywhere in shared
+// storage (a few folders deep), is checked with the extractor's own supported-ROM test.
+struct QuestRomCandidate {
+    std::string path;
+    bool valid;
+    bool masterQuest;
+};
+
+static std::vector<QuestRomCandidate> QuestScanForRoms() {
+    namespace fs = std::filesystem;
+    std::vector<QuestRomCandidate> out;
+    std::error_code ec;
+    const fs::path root("/storage/emulated/0");
+    fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+    for (; !ec && it != end; it.increment(ec)) {
+        const fs::directory_entry& e = *it;
+        const std::string name = e.path().filename().string();
+        if (e.is_directory(ec)) {
+            // Skip app-private and hidden trees, and don't go too deep.
+            if (name == "Android" || (!name.empty() && name[0] == '.') || it.depth() >= 3) {
+                it.disable_recursion_pending();
+            }
+            continue;
+        }
+        if (!e.is_regular_file(ec)) {
+            continue;
+        }
+        std::string ext = e.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        const uintmax_t size = e.file_size(ec);
+        const bool romExt = ext == ".z64" || ext == ".n64" || ext == ".v64";
+        const bool romSize = size == MB32 || size == MB54 || size == MB64;
+        if (!romExt && !romSize) {
+            continue;
+        }
+        Extractor probe;
+        const bool valid = probe.RunFileStandalone(e.path().string());
+        if (valid || romExt) { // unknown files of a ROM's size are only listed when they are the game
+            out.push_back({ e.path().string(), valid, valid && probe.IsMasterQuest() });
+        }
+        if (out.size() >= 24) {
+            break;
+        }
+    }
+    std::sort(out.begin(), out.end(), [](const QuestRomCandidate& a, const QuestRomCandidate& b) {
+        return a.valid != b.valid ? a.valid : a.path < b.path;
+    });
+    return out;
+}
+#endif
 
 typedef enum WindowsSteps {
     WS_TEMP,
@@ -482,6 +536,9 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
 
     std::shared_ptr<BS::thread_pool> threadPool = std::make_shared<BS::thread_pool>(1);
     std::optional<std::future<void>> extractionTask;
+#ifdef __ANDROID__
+    std::vector<QuestRomCandidate> questRoms; // PS_VR_SELECT list
+#endif
 
 #if not defined(__SWITCH__) && not defined(__WIIU__)
     CheckAndCreateModFolder();
@@ -690,36 +747,29 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                     case PS_LOCAL: {
 #ifdef __ANDROID__
                         {
-                            // QuestShip: find the ROM without any dialog. Players copy it to the app
-                            // folder or the Download folder (USB or SideQuest). Keep only files that
-                            // are supported ROMs, one vanilla and one Master Quest at most, so no
-                            // error or "extract again?" popup (invisible in VR) can stall startup.
-                            std::vector<std::string> found;
-                            for (const std::string& dir :
-                                 { dataPath, std::string("/storage/emulated/0/Download"), std::string("/sdcard/Download") }) {
-                                extract = Extractor();
-                                extract.SetSearchPath(dir);
-                                extract.GetRoms(found);
-                            }
+                            // QuestShip: find the ROM without any dialog (Android dialogs are
+                            // invisible in VR). One vanilla and one Master Quest at most, so no
+                            // "extract again?" popup can stall startup.
+                            questRoms = QuestScanForRoms();
                             bool haveVanilla = false, haveMQ = false;
-                            for (const std::string& rom : found) {
-                                Extractor probe;
-                                if (!probe.RunFileStandalone(rom)) {
-                                    SPDLOG_INFO("[Setup] skipping {} (not a supported ROM)", rom);
+                            for (const auto& rom : questRoms) {
+                                if (!rom.valid) {
                                     continue;
                                 }
-                                bool& have = probe.IsMasterQuest() ? haveMQ : haveVanilla;
+                                bool& have = rom.masterQuest ? haveMQ : haveVanilla;
                                 if (!have) {
                                     have = true;
-                                    args.push_back(rom);
-                                    SPDLOG_INFO("[Setup] extracting game data from {}", rom);
+                                    args.push_back(rom.path);
+                                    SPDLOG_INFO("[Setup] extracting game data from {}", rom.path);
                                 }
                             }
                             if (!args.empty()) {
                                 extractStep = ES_EXTRACT_ARGS;
+                            } else if (vr_is_initialized()) {
+                                SPDLOG_WARN("[Setup] no supported ROM found; showing the in-headset ROM screen");
+                                promptStep = PS_VR_SELECT;
                             } else {
-                                SPDLOG_WARN("[Setup] no supported ROM in the app or Download folder");
-                                promptStep = PS_FIRST; // fall back to the system file picker
+                                promptStep = PS_FIRST; // flat Android: the system file picker
                             }
                             continue;
                         }
@@ -771,6 +821,10 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
 #endif
                         continue;
                     }
+#ifdef __ANDROID__
+                    case PS_VR_SELECT:
+                        break; // drawn in the render section below; buttons move the state on
+#endif
                     case PS_SECOND: {
                         SohGui::RegisterPopup(
                             "Extraction Complete", "ROM Extracted. Extract another?", "Yes", "No",
@@ -826,6 +880,11 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                                           "", [&]() { exit(0); });
                 }
                 extractDone = true;
+#ifdef __ANDROID__
+                if (vr_is_initialized()) {
+                    vr_menu_set_open(false); // setup is over: the panel was only borrowed
+                }
+#endif
                 continue;
             }
             default:
@@ -847,9 +906,32 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
         if (!wnd->IsFrameReady()) {
             continue;
         }
+#ifdef __ANDROID__
+        // QuestShip: in the headset, first-run setup draws on the floating settings panel (the
+        // Android window itself is never shown in VR, which left players on loading dots).
+        const bool questVr = vr_is_initialized();
+        if (questVr) {
+            if (!vr_begin_frame()) {
+                ImGui::PopStyleColor(2);
+                continue;
+            }
+            if (!vr_menu_is_open()) {
+                vr_menu_set_open(true);
+            }
+        }
+        sohFast3dWindow->StartFrame();
+        if (questVr) {
+            vr_begin_menu();
+        }
+        gui->StartDraw();
+        if (!questVr) {
+            sohFast3dWindow->RunGuiOnly();
+        }
+#else
         gui->StartDraw();
         sohFast3dWindow->StartFrame();
         sohFast3dWindow->RunGuiOnly();
+#endif
         if (extractionTask.has_value()) {
             auto status = extractionTask->wait_for(std::chrono::milliseconds(0));
             if (status == std::future_status::ready) {
@@ -886,7 +968,59 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                 ImGui::PopStyleVar(2);
             }
         }
+#ifdef __ANDROID__
+        if (extractStep == ES_EXTRACT && promptStep == PS_VR_SELECT && !extractionTask.has_value()) {
+            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+            ImGui::Begin("##QuestRomSetup", nullptr,
+                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings);
+            ImGui::SetWindowFontScale(1.5f);
+            ImGui::TextWrapped("Quest 3: OOT - first-time setup");
+            ImGui::Separator();
+            ImGui::TextWrapped("To play, the game needs your own copy of Ocarina of Time: a ROM file (usually "
+                               ".z64, .n64 or .v64; any file name works).");
+            ImGui::Spacing();
+            ImGui::TextWrapped("1. Connect your Quest to a computer and open SideQuest's file manager "
+                               "(or File Explorer on Windows).");
+            ImGui::TextWrapped("2. Copy your ROM into the Quest's Download folder.");
+            ImGui::TextWrapped("3. Press Rescan below, then choose your ROM.");
+            ImGui::Spacing();
+            if (ImGui::Button("Rescan", ImVec2(260.0f, 70.0f))) {
+                questRoms = QuestScanForRoms();
+            }
+            ImGui::Spacing();
+            ImGui::Separator();
+            if (questRoms.empty()) {
+                ImGui::TextWrapped("No ROM files found on this Quest yet.");
+            }
+            for (size_t r = 0; r < questRoms.size(); r++) {
+                const auto& rom = questRoms[r];
+                ImGui::PushID((int)r);
+                const std::string name = std::filesystem::path(rom.path).filename().string();
+                if (rom.valid) {
+                    if (ImGui::Button("Use this ROM", ImVec2(260.0f, 60.0f))) {
+                        args = { rom.path };
+                        extractStep = ES_EXTRACT_ARGS;
+                        SPDLOG_INFO("[Setup] player chose {}", rom.path);
+                    }
+                    ImGui::SameLine();
+                    ImGui::TextWrapped("%s%s", name.c_str(), rom.masterQuest ? "  (Master Quest)" : "");
+                } else {
+                    ImGui::TextDisabled("%s  (not a supported version of the game)", name.c_str());
+                }
+                ImGui::PopID();
+            }
+            ImGui::End();
+        }
+#endif
         gui->EndDraw();
+#ifdef __ANDROID__
+        if (questVr) {
+            vr_end_menu();
+            vr_end_frame();
+        }
+#endif
         sohFast3dWindow->EndFrame();
         ImGui::PopStyleColor(2);
     }

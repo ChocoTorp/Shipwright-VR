@@ -372,9 +372,11 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
                 { "gVrBindSelRTrigger", "gVrBindSelRGrip", "gVrBindSelRPrimary", "gVrBindSelRSecondary",
                   "gVrBindSelRStickClick", "gVrBindSelRMenu" },
             };
+            // QuestShip defaults (Morgan's layout): left grip Z-target, right grip shield (R),
+            // Y = Start, left stick click = L; A/B on the right face buttons.
             static const s32 sVrBindSelDefaults[2][6] = {
-                { 0, BTN_R, 0, 0, BTN_START, BTN_START },
-                { 0, BTN_Z, BTN_A, BTN_B, 0, 0 },
+                { 0, BTN_Z, 0, BTN_START, BTN_L, 0 },
+                { 0, BTN_R, BTN_A, BTN_B, 0, 0 },
             };
             // QuestShip: START sits on the stick click of the hand WITHOUT the selector, so in
             // left-handed mode (selector on the left stick) it moves to the right stick click.

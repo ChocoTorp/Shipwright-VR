@@ -58,6 +58,17 @@ import android.os.VibrationEffect;
 
 //This class is the main SDLActivity and just sets up a bunch of default files
 public class MainActivity extends SDLActivity{
+    // QuestShip: closing the game on the Quest destroys the activity but Android keeps the process
+    // alive, and a relaunch then re-runs the whole game inside it on top of the old copy's memory
+    // (the second copy was killed by the out-of-memory reaper a few seconds in). SDL has already
+    // stopped the game thread by the time super.onDestroy() returns, so end the process here and
+    // let every launch start clean.
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        android.os.Process.killProcess(android.os.Process.myPid());
+    }
+
 
     SharedPreferences preferences;
     private static final CountDownLatch setupLatch = new CountDownLatch(1);
