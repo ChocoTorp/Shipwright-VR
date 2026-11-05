@@ -34,6 +34,7 @@
 - Nut preview waits in front of your chest, space-locked.
 - Add a second button to open the settings menu.
 - Archery landing target and flight line have separate switches.
+- Point at the pause menu with either controller; trigger selects.
 
 
 ## Optimization
@@ -144,6 +145,9 @@ The left menu button (the hamburger) always opens the settings menu. A new optio
 
 **Archery landing target and flight line have separate switches.**
 The slingshot and bow landing target (ring and dot) and the flight path line are now two independent settings. Both live in VR Settings under Items and Archery, in an Archery Targeting section. You can show either one, both or neither. The target is on and the line is off by default.
+
+**Point at the pause menu with either controller; trigger selects.**
+While the pause menu's floating panel is up, a controller aimed at it shows a small dot where it points. Moving onto an item, equipment or quest slot puts the cursor there, with a light tick of haptics, and the pointing hand's trigger works as A on the slot under the dot. The page arrows click the same way. The A button and the sticks work as before. The map pages are not covered yet. gVrPausePointer turns it off.
 
 ## Optimization
 

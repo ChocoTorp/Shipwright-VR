@@ -97,13 +97,28 @@ void KaleidoScope_DrawQuestStatus(PlayState* play, GraphicsContext* gfxCtx) {
         }
         pauseCtx->cursorColorSet = 0;
 
+        // SOH [VR] Controller pointer: hovering a quest slot moves the cursor there through the
+        // stick path below (same item name, sound and song preview).
+        s16 vrQuestSlot = -1;
+        if ((pauseCtx->state == 6) && (pauseCtx->pageIndex == PAUSE_QUEST)) {
+            vrQuestSlot = KaleidoScope_VrPointerHover(KALEIDO_VR_PTR_QUEST, pauseCtx->questVtx, 25, input);
+            if ((vrQuestSlot >= 0) && (pauseCtx->cursorSpecialPos != 0)) {
+                pauseCtx->cursorSpecialPos = 0;
+                pauseCtx->nameDisplayTimer = 0;
+            }
+        }
+
         if (pauseCtx->cursorSpecialPos == 0) {
             pauseCtx->nameColorSet = 0;
-            if ((pauseCtx->state != 6) || ((pauseCtx->stickRelX == 0) && (pauseCtx->stickRelY == 0))) {
+            if ((pauseCtx->state != 6) ||
+                ((pauseCtx->stickRelX == 0) && (pauseCtx->stickRelY == 0) && (vrQuestSlot < 0))) {
                 // No cursor movement
                 sp216 = pauseCtx->cursorSlot[PAUSE_QUEST];
             } else {
                 phi_s3 = pauseCtx->cursorPoint[PAUSE_QUEST];
+                if (vrQuestSlot >= 0) {
+                    KaleidoScope_UpdateQuestStatusPoint(pauseCtx, vrQuestSlot);
+                }
 
                 if ((pauseCtx->stickRelX < -30)) {
                     phi_s0 = D_8082A1AC[phi_s3][2];

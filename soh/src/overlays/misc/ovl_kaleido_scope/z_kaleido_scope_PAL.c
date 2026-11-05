@@ -23,6 +23,7 @@
 #include "soh/SaveManager.h"
 #include "soh/Enhancements/kaleido.h"
 #include <soh_assets.h>
+#include <vr_interface.h>
 
 static void* sEquipmentFRATexs[] = {
     gPauseEquipment00FRATex, gPauseEquipment01Tex, gPauseEquipment02Tex, gPauseEquipment03Tex, gPauseEquipment04Tex,
@@ -1310,6 +1311,19 @@ void KaleidoScope_HandlePageToggles(PauseContext* pauseCtx, Input* input) {
         return;
     }
 
+    // SOH [VR] Clicking the left/right page arrows (info panel quads 2 and 3) with the pointer's
+    // trigger (padmgr turns it into A); the A button itself never turns pages.
+    float vrPtrX, vrPtrY;
+    int vrPtrHand;
+    if (CHECK_BTN_ALL(input->press.button, BTN_A) && VR_IsInitialized() &&
+        VR_GetFlatPointer(&vrPtrX, &vrPtrY, &vrPtrHand) && (VR_GetControllerButton(vrPtrHand) & VR_BTN_TRIGGER)) {
+        s16 vrArrow = KaleidoScope_VrPointerHitQuad(KALEIDO_VR_PTR_INFO, pauseCtx->infoPanelVtx, 2, 2);
+        if (vrArrow >= 0) {
+            KaleidoScope_SwitchPage(pauseCtx, (vrArrow == 2) ? 0 : 2);
+            return;
+        }
+    }
+
     if (CHECK_BTN_ALL(input->press.button, PageLeft_BTN)) {
         KaleidoScope_SwitchPage(pauseCtx, 0);
         return;
@@ -1683,6 +1697,7 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
                 gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
 
+                KaleidoScope_VrPointerCapture(pauseCtx, KALEIDO_VR_PTR_ITEM); // SOH [VR]
                 POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemPageVtx,
                                                               sSelectItemTexs[gSaveContext.language]);
 
@@ -1732,6 +1747,7 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                     POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->saveVtx, sGameOverTexs);
                     RandoKaleido_DrawMiscCollectibles(play);
                 } else {
+                    KaleidoScope_VrPointerCapture(pauseCtx, KALEIDO_VR_PTR_QUEST); // SOH [VR]
                     POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->questPageVtx,
                                                                   sQuestStatusTexs[gSaveContext.language]);
                     KaleidoScope_DrawQuestStatus(play, gfxCtx);
@@ -1750,6 +1766,7 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
                 gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
 
+                KaleidoScope_VrPointerCapture(pauseCtx, KALEIDO_VR_PTR_EQUIP); // SOH [VR]
                 POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipPageVtx,
                                                               sEquipmentTexs[gSaveContext.language]);
 
@@ -2105,6 +2122,7 @@ void KaleidoScope_DrawInfoPanel(PlayState* play) {
     Matrix_Scale(1.0f, 1.0f, 1.0f, MTXMODE_APPLY);
 
     gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+    KaleidoScope_VrPointerCapture(pauseCtx, KALEIDO_VR_PTR_INFO); // SOH [VR] page arrows
 
     const Color_RGBA8 namePanelColor =
         CVarGetColor(CVAR_COSMETIC("Kaleido.NamePanel.Value"), (Color_RGBA8){ 90, 100, 130, 255 });
@@ -3496,6 +3514,125 @@ void KaleidoScope_DrawGameOver(PlayState* play) {
     CLOSE_DISPS(gfxCtx);
 }
 
+// #region SOH [VR] Controller laser pointer on the pause panel. The VR layer reports where the
+// dominant controller's ray meets the floating pause panel, in the game's 320x240 screen space.
+// Pages are 3D quads, so each page's model-view-projection is captured while it draws and its slot
+// quads are projected to screen space for the hit test. Hovering a slot moves the cursor there
+// through the page's own cursor code; the pointing hand's trigger is A (padmgr.c).
+static MtxF sVrPtrMvp[KALEIDO_VR_PTR_MAX];
+static u8 sVrPtrMvpValid[KALEIDO_VR_PTR_MAX];
+static s16 sVrPtrLastHover[KALEIDO_VR_PTR_MAX] = { -1, -1, -1, -1 };
+
+static s32 KaleidoScope_VrPointerGet(f32* x, f32* y, s32* hand) {
+    float px, py;
+    int ph;
+
+    if (!VR_IsInitialized() || !CVarGetInteger("gVrPausePointer", 1) || !VR_GetFlatPointer(&px, &py, &ph)) {
+        return false;
+    }
+    *x = px;
+    *y = py;
+    if (hand != NULL) {
+        *hand = ph;
+    }
+    return true;
+}
+
+void KaleidoScope_VrPointerCapture(PauseContext* pauseCtx, s32 space) {
+    MtxF proj;
+    MtxF viewing;
+    MtxF projView;
+    MtxF model;
+
+    if (!VR_IsInitialized()) {
+        return;
+    }
+    Matrix_MtxToMtxF(&pauseCtx->view.projection, &proj);
+    Matrix_MtxToMtxF(&pauseCtx->view.viewing, &viewing);
+    SkinMatrix_MtxFMtxFMult(&proj, &viewing, &projView);
+    Matrix_Get(&model);
+    SkinMatrix_MtxFMtxFMult(&projView, &model, &sVrPtrMvp[space]);
+    sVrPtrMvpValid[space] = true;
+}
+
+// Index (first..first+count-1) of the quad (4 consecutive vertices) under the pointer, or -1.
+s16 KaleidoScope_VrPointerHitQuad(s32 space, Vtx* vtx, s16 first, s16 count) {
+    f32 px, py;
+    s16 i;
+    s16 k;
+
+    if (!sVrPtrMvpValid[space] || !KaleidoScope_VrPointerGet(&px, &py, NULL)) {
+        return -1;
+    }
+    for (i = first; i < first + count; i++) {
+        f32 minX = 10000.0f, minY = 10000.0f, maxX = -10000.0f, maxY = -10000.0f;
+        for (k = 0; k < 4; k++) {
+            Vtx* v = &vtx[i * 4 + k];
+            Vec3f pos = { v->v.ob[0], v->v.ob[1], v->v.ob[2] };
+            Vec3f clip;
+            f32 w;
+            f32 sx, sy;
+
+            SkinMatrix_Vec3fMtxFMultXYZW(&sVrPtrMvp[space], &pos, &clip, &w);
+            if (w <= 0.0f) {
+                break;
+            }
+            sx = (clip.x / w) * (SCREEN_WIDTH / 2) + (SCREEN_WIDTH / 2);
+            sy = -(clip.y / w) * (SCREEN_HEIGHT / 2) + (SCREEN_HEIGHT / 2);
+            minX = MIN(minX, sx);
+            maxX = MAX(maxX, sx);
+            minY = MIN(minY, sy);
+            maxY = MAX(maxY, sy);
+        }
+        if ((k == 4) && (px >= minX) && (px <= maxX) && (py >= minY) && (py <= maxY)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// The slot (0..count-1) the cursor should jump to this frame, or -1. Fires when the pointer moves
+// onto a new slot, and on a TRIGGER click (padmgr turns the pointing hand's trigger into A) so the
+// click acts on the slot under the pointer even if the stick moved the cursor away meanwhile. The
+// A button itself always acts on the cursor wherever the stick or pointer left it.
+s16 KaleidoScope_VrPointerHover(s32 space, Vtx* vtx, s16 count, Input* input) {
+    s16 hit = KaleidoScope_VrPointerHitQuad(space, vtx, 0, count);
+    s16 last = sVrPtrLastHover[space];
+    f32 px, py;
+    s32 hand;
+
+    sVrPtrLastHover[space] = hit;
+    if ((hit < 0) || !KaleidoScope_VrPointerGet(&px, &py, &hand)) {
+        return -1;
+    }
+    if (hit != last) {
+        VR_TriggerHaptic(hand, 0.15f, 0.0f, 12.0f);
+        return hit;
+    }
+    if (CHECK_BTN_ALL(input->press.button, BTN_A) && (VR_GetControllerButton(hand) & VR_BTN_TRIGGER)) {
+        return hit;
+    }
+    return -1;
+}
+
+static void KaleidoScope_VrPointerDraw(PlayState* play) {
+    f32 px, py;
+
+    if (!KaleidoScope_VrPointerGet(&px, &py, NULL)) {
+        return;
+    }
+    OPEN_DISPS(play->state.gfxCtx);
+    Gfx_SetupDL_39Overlay(play->state.gfxCtx);
+    gDPSetRenderMode(OVERLAY_DISP++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+    gDPSetCombineMode(OVERLAY_DISP++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, 230);
+    gDPFillRectangle(OVERLAY_DISP++, (s32)px - 2, (s32)py - 2, (s32)px + 2, (s32)py + 2);
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, 200);
+    gDPFillRectangle(OVERLAY_DISP++, (s32)px - 1, (s32)py - 1, (s32)px + 1, (s32)py + 1);
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+// #endregion
+
 void KaleidoScope_Draw(PlayState* play) {
     Input* input = &play->state.input[0];
     PauseContext* pauseCtx = &play->pauseCtx;
@@ -3538,6 +3675,10 @@ void KaleidoScope_Draw(PlayState* play) {
 
     if ((pauseCtx->debugState == 1) || (pauseCtx->debugState == 2)) {
         KaleidoScope_DrawDebugEditor(play);
+    }
+
+    if ((pauseCtx->debugState == 0) && (pauseCtx->state == 6)) {
+        KaleidoScope_VrPointerDraw(play);
     }
 
     func_800AAA50(&play->view, 15);

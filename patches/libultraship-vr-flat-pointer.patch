@@ -1,0 +1,150 @@
+diff --git a/include/fast/vr_openxr.h b/include/fast/vr_openxr.h
+index 58bfc26..9f05894 100644
+--- a/include/fast/vr_openxr.h
++++ b/include/fast/vr_openxr.h
+@@ -208,6 +208,10 @@ bool vr_is_rendering_screen();
+ // floating panel instead of the stereo eyes; the frozen world stays behind it, still head-tracked.
+ void vr_set_flat_screen(bool enabled);
+ bool vr_get_flat_screen();
++// QuestShip: controller laser pointer on the flat-screen panel (pause menu). u,v in 0..1 across the
++// panel (top-left origin); hand is the controller casting the ray. False when no ray hits it or the
++// settings menu is open.
++bool vr_flat_pointer(float* u, float* v, int* hand);
+ void vr_begin_screen();
+ void vr_end_screen();
+ void vr_get_2d_target_size(uint32_t* w, uint32_t* h);
+diff --git a/include/vr_interface.h b/include/vr_interface.h
+index 53e23df..4bd7e3c 100644
+--- a/include/vr_interface.h
++++ b/include/vr_interface.h
+@@ -298,6 +298,9 @@ void     VR_RegisterSpaceMatrix(const void* mtx, const float anchorM[3], const f
+ // input the menu consumes while it is open.
+ bool     VR_MenuIsOpen(void);
+ bool     VR_MenuConsumesButton(int hand, uint16_t mask);
++// QuestShip: controller laser pointer on the flat-screen panel (pause menu). x,y in the game's
++// 320x240 screen space; hand is the controller casting the ray. False when nothing hits the panel.
++bool     VR_GetFlatPointer(float* x, float* y, int* hand);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/fast/vr_interface.cpp b/src/fast/vr_interface.cpp
+index 9136954..95b0646 100644
+--- a/src/fast/vr_interface.cpp
++++ b/src/fast/vr_interface.cpp
+@@ -386,6 +386,17 @@ bool VR_MenuConsumesButton(int hand, uint16_t mask) {
+     return vr_menu_consumes_button(hand, mask);
+ }
+ 
++bool VR_GetFlatPointer(float* x, float* y, int* hand) {
++    float u, v;
++    if (!vr_flat_pointer(&u, &v, hand)) {
++        return false;
++    }
++    // The panel shows the native 4:3 frame edge to edge.
++    *x = u * 320.0f;
++    *y = v * 240.0f;
++    return true;
++}
++
+ void VR_RegisterSpaceMatrix(const void* mtx, const float anchorM[3], const float offsetUnits[3],
+                             const float* modelMf16, float spinDegPerS) {
+     vr_register_space_matrix(mtx, anchorM, offsetUnits, modelMf16, spinDegPerS);
+diff --git a/src/fast/vr_openxr.cpp b/src/fast/vr_openxr.cpp
+index 8662d1e..b04d653 100644
+--- a/src/fast/vr_openxr.cpp
++++ b/src/fast/vr_openxr.cpp
+@@ -253,6 +253,10 @@ static struct {
+     bool ptr_hit;
+     bool ptr_down;
+     float ptr_x, ptr_y, ptr_wheel;
++    // QuestShip: laser pointer on the flat-screen panel (pause menu), panel UV + casting hand.
++    bool flat_ptr_hit;
++    int flat_ptr_hand;
++    float flat_ptr_u, flat_ptr_v;
+ 
+     // Frame plan for the current XR frame (see vr_set_frame_plan).
+     bool plan_render_eyes;
+@@ -1691,6 +1695,67 @@ static void vr_menu_update() {
+     }
+ }
+ 
++// QuestShip: the flat-screen panel's laser pointer. Same ray-vs-quad test as the settings menu,
++// against the panel's pose and size (local_space, so the raw pre-turn aim poses). The dominant hand
++// (gVrLeftHanded) is tried first.
++static float vr_flat_width_m() {
++    return fmaxf(CVarGetFloat("gVrScreenSize", 2.4f), 0.5f);
++}
++
++static void vr_flat_pointer_update() {
++    xr.flat_ptr_hit = false;
++    if (!xr.input_initialized || !xr.flat_screen || xr.menu_open) {
++        return;
++    }
++    const glm::vec3 c(xr.flat_pose.position.x, xr.flat_pose.position.y, xr.flat_pose.position.z);
++    const glm::quat qm(xr.flat_pose.orientation.w, xr.flat_pose.orientation.x, xr.flat_pose.orientation.y,
++                       xr.flat_pose.orientation.z);
++    const glm::vec3 n = qm * glm::vec3(0.0f, 0.0f, 1.0f);
++    const float w = vr_flat_width_m();
++    const float h = w * 0.75f;
++    const int dominant = CVarGetInteger("gVrLeftHanded", 0) ? 0 : 1;
++    const int hands[2] = { dominant, 1 - dominant };
++    for (int i = 0; i < 2; i++) {
++        const int hd = hands[i];
++        if (!xr.hand_active[hd]) {
++            continue;
++        }
++        const XrPosef& ap = xr.aim_pose_raw[hd];
++        const glm::vec3 o(ap.position.x, ap.position.y, ap.position.z);
++        const glm::vec3 d = glm::quat(ap.orientation.w, ap.orientation.x, ap.orientation.y, ap.orientation.z) *
++                            glm::vec3(0.0f, 0.0f, -1.0f);
++        const float denom = glm::dot(d, n);
++        if (denom > -1e-4f) {
++            continue; // parallel or pointing away from the panel's front
++        }
++        const float t = glm::dot(c - o, n) / denom;
++        if (t < 0.0f) {
++            continue;
++        }
++        const glm::vec3 local = glm::conjugate(qm) * (o + d * t - c);
++        const float u = local.x / w + 0.5f;
++        const float v = 0.5f - local.y / h;
++        if (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f) {
++            continue;
++        }
++        xr.flat_ptr_hit = true;
++        xr.flat_ptr_hand = hd;
++        xr.flat_ptr_u = u;
++        xr.flat_ptr_v = v;
++        break;
++    }
++}
++
++bool vr_flat_pointer(float* u, float* v, int* hand) {
++    if (!xr.initialized || !xr.enabled || !xr.flat_ptr_hit) {
++        return false;
++    }
++    *u = xr.flat_ptr_u;
++    *v = xr.flat_ptr_v;
++    *hand = xr.flat_ptr_hand;
++    return true;
++}
++
+ bool vr_menu_is_open() {
+     return xr.initialized && xr.enabled && xr.menu_open;
+ }
+@@ -2040,6 +2105,7 @@ bool vr_begin_frame() {
+     }
+ 
+     vr_menu_update();
++    vr_flat_pointer_update();
+ 
+     // Physical-combat substrate: push this frame's RAW hand kinematics, then integrate one step
+     // with the frame's world context (snap turn + the same blended anchor vr_get_hand_pose uses,
+@@ -3450,6 +3516,7 @@ bool vr_is_rendering_hud() { return false; }
+ bool vr_is_rendering_screen() { return false; }
+ void vr_set_flat_screen(bool) {}
+ bool vr_get_flat_screen() { return false; }
++bool vr_flat_pointer(float*, float*, int*) { return false; }
+ void vr_begin_screen() {}
+ void vr_end_screen() {}
+ void vr_get_2d_target_size(uint32_t* w, uint32_t* h) { *w = 1024; *h = 768; }

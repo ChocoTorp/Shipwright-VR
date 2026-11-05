@@ -142,6 +142,16 @@ tasks.register("applyLibultrashipAndroidPatch") {
                         "../patches/libultraship-touch-camera-active.patch"
             }
         }
+
+        // QuestShip: controller laser pointer on the flat-screen panel (pause menu).
+        def vrOpenXrFile = file("${libultrashipDir}/src/fast/vr_openxr.cpp")
+        if (!vrOpenXrFile.text.contains("vr_flat_pointer_update")) {
+            exec {
+                workingDir libultrashipDir
+                commandLine "git", "apply", "--ignore-whitespace", "--whitespace=nowarn",
+                        "../patches/libultraship-vr-flat-pointer.patch"
+            }
+        }
     }
 }
 

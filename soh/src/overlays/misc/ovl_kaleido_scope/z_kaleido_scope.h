@@ -51,4 +51,18 @@ void KaleidoScope_UpdateCursorSize(PauseContext* pauseCtx);
 
 void KaleidoScope_ResetItemCycling();
 
+// SOH [VR] Controller laser pointer on the pause panel (z_kaleido_scope_PAL.c). Each page captures
+// its own model-view-projection while it draws; hit tests project that page's slot quads to the
+// 320x240 screen and check them against where the controller ray meets the panel.
+typedef enum {
+    KALEIDO_VR_PTR_ITEM,
+    KALEIDO_VR_PTR_EQUIP,
+    KALEIDO_VR_PTR_QUEST,
+    KALEIDO_VR_PTR_INFO,
+    KALEIDO_VR_PTR_MAX
+} KaleidoVrPointerSpace;
+void KaleidoScope_VrPointerCapture(PauseContext* pauseCtx, s32 space);
+s16 KaleidoScope_VrPointerHitQuad(s32 space, Vtx* vtx, s16 first, s16 count);
+s16 KaleidoScope_VrPointerHover(s32 space, Vtx* vtx, s16 count, Input* input);
+
 #endif
