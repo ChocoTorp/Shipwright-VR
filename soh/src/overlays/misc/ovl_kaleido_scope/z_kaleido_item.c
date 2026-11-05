@@ -622,6 +622,23 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
             }
         }
 
+        // SOH [VR] Controller pointer: hovering an item puts the cursor on it (C buttons then equip
+        // it as usual). Works from the page-arrow positions too.
+        {
+            s16 vrSlot = KaleidoScope_VrPointerHover(KALEIDO_VR_PTR_ITEM, pauseCtx->itemVtx, 24, input);
+            if ((vrSlot >= 0) && ((gSaveContext.inventory.items[vrSlot] != ITEM_NONE) || pauseAnyCursor)) {
+                if (pauseCtx->cursorSpecialPos != 0) {
+                    pauseCtx->cursorSpecialPos = 0;
+                    pauseCtx->nameDisplayTimer = 0;
+                }
+                pauseCtx->cursorPoint[PAUSE_ITEM] = vrSlot;
+                pauseCtx->cursorX[PAUSE_ITEM] = vrSlot % 6;
+                pauseCtx->cursorY[PAUSE_ITEM] = vrSlot / 6;
+                cursorItem = gSaveContext.inventory.items[vrSlot];
+                moveCursorResult = 1;
+            }
+        }
+
         if (pauseCtx->cursorSpecialPos == 0) {
             if (cursorItem != PAUSE_ITEM_NONE) {
                 if ((ABS(pauseCtx->stickRelY) > 30) ||

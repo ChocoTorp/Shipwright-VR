@@ -450,6 +450,33 @@ void KaleidoScope_DrawEquipment(PlayState* play) {
             }
         }
 
+        // SOH [VR] Controller pointer: hovering an owned upgrade or equipment slot puts the cursor
+        // on it, so the trigger (A) equips what is pointed at.
+        {
+            s16 vrSlot = KaleidoScope_VrPointerHover(KALEIDO_VR_PTR_EQUIP, pauseCtx->equipVtx, 16, input);
+            if (vrSlot >= 0) {
+                s16 vrX = vrSlot % 4;
+                s16 vrY = vrSlot / 4;
+                s32 vrValid;
+
+                if (vrX == 0) {
+                    vrValid = (vrY == 0) ? ((CUR_UPG_VALUE(UPG_BULLET_BAG) != 0) || (CUR_UPG_VALUE(UPG_QUIVER) != 0))
+                                         : (CUR_UPG_VALUE(vrY) != 0);
+                } else {
+                    vrValid = (gBitFlags[vrSlot - 1] & gSaveContext.inventory.equipment) || pauseAnyCursor;
+                }
+                if (vrValid) {
+                    if (pauseCtx->cursorSpecialPos != 0) {
+                        pauseCtx->cursorSpecialPos = 0;
+                        pauseCtx->nameDisplayTimer = 0;
+                    }
+                    pauseCtx->cursorPoint[PAUSE_EQUIP] = vrSlot;
+                    pauseCtx->cursorX[PAUSE_EQUIP] = vrX;
+                    pauseCtx->cursorY[PAUSE_EQUIP] = vrY;
+                }
+            }
+        }
+
         if (pauseCtx->cursorX[PAUSE_EQUIP] == 0) {
             pauseCtx->cursorColorSet = 0;
 

@@ -422,9 +422,27 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
             s32 vrSelProfile = CVarGetInteger("gVrItemSelect", 1);
             s32 vrOcarina = VrOcarina_InPlay();
             s32 vrHandIdx, vrBtnIdx;
+            // SOH [VR] Pause-menu laser pointer: while a controller's ray is on the pause panel, that
+            // hand's trigger is A (select / equip what it points at) and its own binding stands down.
+            s32 vrPausePtrHand = -1;
+            {
+                extern PlayState* gPlayState;
+                float vrPtrX, vrPtrY;
+                int vrPtrHand;
+                if ((gPlayState != NULL) && (gPlayState->pauseCtx.state != 0) && CVarGetInteger("gVrPausePointer", 1) &&
+                    VR_GetFlatPointer(&vrPtrX, &vrPtrY, &vrPtrHand)) {
+                    vrPausePtrHand = vrPtrHand;
+                }
+            }
             for (vrHandIdx = 0; vrHandIdx < 2; vrHandIdx++) {
                 uint16_t vrState = (vrHandIdx == 0) ? vrL : vrR;
                 for (vrBtnIdx = 0; vrBtnIdx < 6; vrBtnIdx++) {
+                    if ((vrHandIdx == vrPausePtrHand) && (sVrBtnMasks[vrBtnIdx] == VR_BTN_TRIGGER)) {
+                        if (vrState & VR_BTN_TRIGGER) {
+                            vrPad->button |= BTN_A;
+                        }
+                        continue;
+                    }
                     // SOH [VR] The Alyx-style item selector owns its configured input outright:
                     // its normal binding never fires (the opening click must not leak). In
                     // selector mode both triggers belong to item use, and the two-hand quick-swap
@@ -462,7 +480,7 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
             // (bombs, bottles, boomerang aim-and-throw, magic) obeys its own vanilla rules with
             // nothing re-implemented. Returns 0 when nothing is held in that hand.
             for (vrHandIdx = 0; vrHandIdx < 2; vrHandIdx++) {
-                if (((vrHandIdx == 0) ? vrL : vrR) & VR_BTN_TRIGGER) {
+                if ((vrHandIdx != vrPausePtrHand) && (((vrHandIdx == 0) ? vrL : vrR) & VR_BTN_TRIGGER)) {
                     vrPad->button |= VrItemSelect_TriggerItemMask(vrHandIdx);
                 }
             }
