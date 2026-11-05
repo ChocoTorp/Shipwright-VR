@@ -34,6 +34,7 @@
 - Nut preview waits in front of your chest, space-locked.
 - Add a second button to open the settings menu.
 - Archery landing target and flight line have separate switches.
+- Point at shop items to pick them; the cursor sits on the item.
 
 
 ## Optimization
@@ -144,6 +145,9 @@ The left menu button (the hamburger) always opens the settings menu. A new optio
 
 **Archery landing target and flight line have separate switches.**
 The slingshot and bow landing target (ring and dot) and the flight path line are now two independent settings. Both live in VR Settings under Items and Archery, in an Archery Targeting section. You can show either one, both or neither. The target is on and the line is off by default.
+
+**Point at shop items to pick them; the cursor sits on the item.**
+In VR the shop's 2D cursor was placed from the game camera's view and drawn on the flat HUD panel, so it floated away from the items. It is now drawn in the world on the selected item, in first and third person. In first person, pointing your hand at an item selects it, with a laser and a dot on the item; pointing at the other shelf for a moment turns to it. Buying and the dialog choices keep their buttons. gVrShopPointer turns it off.
 
 ## Optimization
 
