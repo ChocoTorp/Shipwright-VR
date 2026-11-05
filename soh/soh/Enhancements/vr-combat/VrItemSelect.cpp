@@ -11,11 +11,36 @@ s32 Player_GetItemOnButton(PlayState* play, s32 index);
 // OTRGlobals.cpp (declared C-only in OTRGlobals.h): item -> GetItem model lookup.
 GetItemID RetrieveGetItemIDFromItemID(ItemID itemID);
 GetItemEntry ItemTable_Retrieve(int16_t getItemID);
+GetItemEntry ItemTable_RetrieveEntry(s16 modIndex, s16 getItemID);
+}
+
+// The 3D model for an item: its get-item entry. The Master Sword has no vanilla get-item entry (it
+// maps to GI_MAX), so it borrows the randomizer's Master Sword entry, which carries its own model.
+// The broken Giant's Knife (ITEM_SWORD_KNIFE, which the B button holds once the knife breaks) has
+// no get-item either, so it takes the Broken Goron's Sword's, the nearest broken blade. A half-drunk
+// milk bottle has none either and takes the full milk bottle's. Returns the empty entry (itemId
+// ITEM_NONE) when an item has no model.
+static GetItemEntry ItemModelEntry(u8 item) {
+    if (item == ITEM_SWORD_MASTER) {
+        return ItemTable_RetrieveEntry(MOD_RANDOMIZER, RG_MASTER_SWORD);
+    }
+    if (item == ITEM_SWORD_KNIFE) {
+        return ItemTable_Retrieve(GI_SWORD_BROKEN);
+    }
+    if (item == ITEM_MILK_HALF) {
+        return ItemTable_Retrieve(GI_MILK_BOTTLE);
+    }
+    const GetItemID gi = RetrieveGetItemIDFromItemID((ItemID)item);
+    if (gi == GI_NONE || gi == GI_MAX) {
+        return GET_ITEM_NONE;
+    }
+    return ItemTable_Retrieve(gi);
 }
 
 #include "VrCombat.h"
 #include "VrEmittedMatrices.h"
 #include "VrItemSelectionState.h"
+#include "soh/Enhancements/randomizer/randomizerTypes.h"
 
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ShipInit.hpp"
@@ -456,12 +481,15 @@ bool IsHandModelItem(u8 item) {
 // functions (inside the anonymous namespace they would not link).
 extern "C" {
 static bool DrawItemModelInHand(Player* player, u8 item, int hand) {
-    const GetItemID gi = RetrieveGetItemIDFromItemID((ItemID)item);
     float hm[4][4];
-    if (gi == GI_NONE || !VR_GetHandMatrix(hand, hm)) {
+    if (!VR_GetHandMatrix(hand, hm)) {
         return false;
     }
-    const GetItemEntry entry = ItemTable_Retrieve(gi);
+    // No model: the empty entry's model id 0 is the bottle, so draw nothing instead.
+    const GetItemEntry entry = ItemModelEntry(item);
+    if (entry.itemId == ITEM_NONE) {
+        return false;
+    }
     MtxF handMtx, handInv;
     memcpy(handMtx.mf, hm, sizeof(handMtx.mf));
     if (SkinMatrix_Invert(&handMtx, &handInv) != 0) {
@@ -553,9 +581,9 @@ extern "C" void VrItemSelect_DrawOpenCompass(void) {
 
         // 3D model when the item has a GetItem model.
         if (models && item < 158) {
-            const GetItemID gi = RetrieveGetItemIDFromItemID((ItemID)item);
-            if (gi != GI_NONE) {
-                const GetItemEntry entry = ItemTable_Retrieve(gi);
+            // An item with no model takes the flat icon below instead.
+            const GetItemEntry entry = ItemModelEntry(item);
+            if (entry.itemId != ITEM_NONE) {
                 const float sc = selected ? modelScale * 1.3f : modelScale; // selected = +30%
                 const float offset[3] = { targets[i].at.x, targets[i].at.y, targets[i].at.z };
                 Gfx* opaStart = POLY_OPA_DISP;
