@@ -1,4 +1,5 @@
 #include "global.h"
+#include <vr_interface.h>
 #include "vt.h"
 #include "textures/parameter_static/parameter_static.h"
 #include "textures/do_action_static/do_action_static.h"
@@ -3664,8 +3665,17 @@ void Interface_DrawEnemyHealthBar(TargetContext* targetCtx, PlayState* play) {
         f32 scaledHeight = -texHeight * scaleY;
         f32 halfBarWidth = endTexWidth + ((f32)healthbar_fillWidth / 2);
         s16 healthBarFill = ((f32)actor->colChkInfo.health / GetActorMaximumHealth(actor)) * healthbar_fillWidth;
+        // SOH [VR] Anchored to the enemy, the bar was placed with the game camera's screen projection and
+        // drawn on the flat HUD panel, so it floated away from the enemy in the headset (either view). In
+        // VR it is drawn in the world instead, billboarded above the locked-on target, like the in-world
+        // lock-on reticle. The top/bottom anchors stay on the HUD.
+        s32 vrWorldBar = VR_IsInitialized() && !VR_IsFlatScreen() && (anchorType == ENEMYHEALTH_ANCHOR_ACTOR);
+        const f32 vrBarScale = 0.25f;  // game units per HUD pixel
+        const f32 vrBarHeight = 20.0f; // above the target's center
 
-        if (anchorType == ENEMYHEALTH_ANCHOR_ACTOR) {
+        if (vrWorldBar) {
+            // Placed in world space below.
+        } else if (anchorType == ENEMYHEALTH_ANCHOR_ACTOR) {
             // Get actor projected position
             Actor_ProjectPos(play, &targetCtx->targetCenterPos, &projTargetCenter, &projTargetCappedInvW);
 
@@ -3704,7 +3714,7 @@ void Interface_DrawEnemyHealthBar(TargetContext* targetCtx, PlayState* play) {
             f32 slideInOffsetY = 0;
 
             // Slide in the health bar from edge of the screen (mimic the Z-Target triangles fly in)
-            if (anchorType == ENEMYHEALTH_ANCHOR_ACTOR && targetCtx->unk_44 > 120.0f) {
+            if (!vrWorldBar && anchorType == ENEMYHEALTH_ANCHOR_ACTOR && targetCtx->unk_44 > 120.0f) {
                 slideInOffsetY = (targetCtx->unk_44 - 120.0f) / 2;
                 // Slide in from the top if the bar is placed on the top half of the screen
                 if (healthbar_offsetY - healthbar_actorOffset <= 0) {
@@ -3712,11 +3722,26 @@ void Interface_DrawEnemyHealthBar(TargetContext* targetCtx, PlayState* play) {
                 }
             }
 
-            // Setup DL for overlay disp
-            Gfx_SetupDL_39Overlay(play->state.gfxCtx);
+            // SOH [VR] The world bar draws the same commands into the world's translucent list; the
+            // overlay list below is just a pointer, so swapping it for this draw redirects all of them.
+            Gfx* vrOverlaySaved = NULL;
+            if (vrWorldBar) {
+                vrOverlaySaved = OVERLAY_DISP;
+                OVERLAY_DISP = POLY_XLU_DISP;
+                OVERLAY_DISP = Gfx_SetupDL_39(OVERLAY_DISP);
+                Matrix_Translate(targetCtx->targetCenterPos.x,
+                                 targetCtx->targetCenterPos.y + vrBarHeight - (healthbar_offsetY * vrBarScale),
+                                 targetCtx->targetCenterPos.z, MTXMODE_NEW);
+                Matrix_ReplaceRotation(&play->billboardMtxF);
+                // Same y flip as the HUD version.
+                Matrix_Scale(vrBarScale, vrBarScale * scaleY, vrBarScale, MTXMODE_APPLY);
+            } else {
+                // Setup DL for overlay disp
+                Gfx_SetupDL_39Overlay(play->state.gfxCtx);
 
-            Matrix_Translate(projTargetCenter.x, projTargetCenter.y - slideInOffsetY, 0, MTXMODE_NEW);
-            Matrix_Scale(1.0f, scaleY, 1.0f, MTXMODE_APPLY);
+                Matrix_Translate(projTargetCenter.x, projTargetCenter.y - slideInOffsetY, 0, MTXMODE_NEW);
+                Matrix_Scale(1.0f, scaleY, 1.0f, MTXMODE_APPLY);
+            }
             Matrix_ToMtx(&sEnemyHealthMtx[0], __FILE__, __LINE__);
             gSPMatrix(OVERLAY_DISP++, &sEnemyHealthMtx[0], G_MTX_MODELVIEW | G_MTX_LOAD);
 
@@ -3768,6 +3793,11 @@ void Interface_DrawEnemyHealthBar(TargetContext* targetCtx, PlayState* play) {
             gSP1Quadrangle(OVERLAY_DISP++, 0, 2, 3, 1, 0);
 
             Matrix_Pop();
+
+            if (vrWorldBar) {
+                POLY_XLU_DISP = OVERLAY_DISP;
+                OVERLAY_DISP = vrOverlaySaved;
+            }
         }
     }
 
