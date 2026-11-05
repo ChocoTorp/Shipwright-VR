@@ -21,6 +21,7 @@
 - Fixed rare black textures caused by stale mipmap state.
 - Soft resets can no longer glitch the title screen.
 - Bombs, Zelda's Letter and trade items show as 3D.
+- Walls no longer cut open when you walk or lean into them.
 
 
 ## Controls
@@ -34,6 +35,7 @@
 - Nut preview waits in front of your chest, space-locked.
 - Add a second button to open the settings menu.
 - Archery landing target and flight line have separate switches.
+- Crawlspaces let you out at the far end in first person.
 
 
 ## Optimization
@@ -116,6 +118,9 @@ The hand and space matrix registries are keyed by memory addresses that the game
 **Bombs, Zelda's Letter and trade items show as 3D.**
 Bombs waiting in front of your chest are now the real 3D bomb, like the Deku Nuts. Zelda's Letter, the eggs, the chickens and every trading-sequence item appear as 3D models in your hand. They are welded to the live hand pose, so they turn with your wrist and never trail. When you run out of nuts or bombs, the waiting model turns 30 percent see-through instead of disappearing.
 
+**Walls no longer cut open when you walk or lean into them.**
+In first person the eye sits ahead of Link's body, so walking into a wall or climbing put it 8 to 12 units from the surface. The near clip plane reaches about 16 units at its corners, so the wall was cut open. The eye is now kept gVrCameraWallClearance (16 units) from any wall at eye height, including your head lean. In crawlspaces it uses the crawl radius, 10. The push moves only that frame's view, never the roomscale origin.
+
 ## Controls
 
 **Smooth turning replaces snap turning as the default setting.**
@@ -144,6 +149,9 @@ The left menu button (the hamburger) always opens the settings menu. A new optio
 
 **Archery landing target and flight line have separate switches.**
 The slingshot and bow landing target (ring and dot) and the flight path line are now two independent settings. Both live in VR Settings under Items and Archery, in an Archery Targeting section. You can show either one, both or neither. The target is on and the line is off by default.
+
+**Crawlspaces let you out at the far end in first person.**
+Roomscale movement checked walls with Link's standing radius, but crawlspaces are built for the smaller crawl radius. Any real head movement pushed Link back off the exit wall, so the exit never triggered. Roomscale movement now pauses while crawling, like it does while grabbing a block.
 
 ## Optimization
 

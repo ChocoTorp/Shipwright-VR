@@ -12442,13 +12442,16 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
             // untouched — this only changes Link's position.
             if (VR_IsInitialized() && VR_GetFirstPerson() && CVarGetInteger("gVrRoomscale", 1) &&
                 (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) && !Player_InBlockingCsMode(play, this) &&
-                !(this->stateFlags1 &
-                  (PLAYER_STATE1_TALKING | PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE |
-                   PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_JUMPING |
-                   PLAYER_STATE1_FREEFALL)) &&
+                !(this->stateFlags1 & (PLAYER_STATE1_TALKING | PLAYER_STATE1_HANGING_OFF_LEDGE |
+                                       PLAYER_STATE1_CLIMBING_LEDGE | PLAYER_STATE1_CLIMBING_LADDER |
+                                       PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_JUMPING | PLAYER_STATE1_FREEFALL)) &&
                 // Hands on a block: the body is anchored to it — physical walking becomes head
                 // lean ("head leans, body holds") instead of dragging Link off the grab.
-                !(this->stateFlags2 & (PLAYER_STATE2_DIVING | PLAYER_STATE2_GRABBING_DYNAPOLY))) {
+                // Crawlspaces too: this sweep uses the STANDING wall radius (14/18), but the tunnel
+                // is built for the crawl radius (10). Any physical head movement pushed Link back off
+                // the exit wall, so the crawl collision never touched it and the exit never fired.
+                !(this->stateFlags2 &
+                  (PLAYER_STATE2_DIVING | PLAYER_STATE2_GRABBING_DYNAPOLY | PLAYER_STATE2_CRAWLING))) {
                 float rsDesired[2];
                 VR_GetRoomscaleDesired(rsDesired);
                 float rsScale = CVarGetFloat("gVrRoomscaleScale", 1.0f);
