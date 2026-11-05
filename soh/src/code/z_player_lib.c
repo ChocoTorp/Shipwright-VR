@@ -1129,8 +1129,14 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
                 }
                 gDPSetEnvColor(POLY_OPA_DISP++, color->r, color->g, color->b, 0);
 
-                gSPDisplayList(POLY_OPA_DISP++, gLinkAdultLeftGauntletPlate1DL);
-                gSPDisplayList(POLY_OPA_DISP++, gLinkAdultRightGauntletPlate1DL);
+                // SOH [VR] The forearm plates ride Link's animated forearms, which motion-control hands
+                // hide while the hands float to the controllers, so the plates hung where his body's
+                // hands are. Skip them with the forearms; the hand plates follow the hands.
+                if (!((overrideLimbDraw == Player_OverrideLimbDrawGameplayVRFirstPerson) &&
+                      CVarGetInteger("gVrMotionHands", 1))) {
+                    gSPDisplayList(POLY_OPA_DISP++, gLinkAdultLeftGauntletPlate1DL);
+                    gSPDisplayList(POLY_OPA_DISP++, gLinkAdultRightGauntletPlate1DL);
+                }
                 gSPDisplayList(POLY_OPA_DISP++, (sLeftHandType == PLAYER_MODELTYPE_LH_OPEN)
                                                     ? gLinkAdultLeftGauntletPlate2DL
                                                     : gLinkAdultLeftGauntletPlate3DL);

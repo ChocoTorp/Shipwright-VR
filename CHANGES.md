@@ -21,6 +21,7 @@
 - Fixed rare black textures caused by stale mipmap state.
 - Soft resets can no longer glitch the title screen.
 - Bombs, Zelda's Letter and trade items show as 3D.
+- Gauntlet forearm plates no longer float with motion hands.
 
 
 ## Controls
@@ -115,6 +116,9 @@ The hand and space matrix registries are keyed by memory addresses that the game
 
 **Bombs, Zelda's Letter and trade items show as 3D.**
 Bombs waiting in front of your chest are now the real 3D bomb, like the Deku Nuts. Zelda's Letter, the eggs, the chickens and every trading-sequence item appear as 3D models in your hand. They are welded to the live hand pose, so they turn with your wrist and never trail. When you run out of nuts or bombs, the waiting model turns 30 percent see-through instead of disappearing.
+
+**Gauntlet forearm plates no longer float with motion hands.**
+In first person with motion hands, Link's shoulders and forearms are hidden while his hands follow the controllers. The Silver and Golden Gauntlets' forearm plates are drawn on the animated forearms, not the hidden limbs, so they hung in the air where his body's hands would be. They are now skipped along with the forearms. The plates on the hands still follow the hands.
 
 ## Controls
 
