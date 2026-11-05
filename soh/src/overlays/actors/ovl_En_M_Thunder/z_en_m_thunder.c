@@ -419,7 +419,12 @@ void EnMThunder_Draw(Actor* thisx, PlayState* play2) {
         phi_t1 = 0x14;
     }
     Matrix_Scale(1.0f, phi_f14, phi_f14, MTXMODE_APPLY);
-    gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+    {
+        // SOH [VR] The charge glow rides the live sword hand, not its game-rate pose.
+        Mtx* chargeMtx = MATRIX_NEWMTX(play->state.gfxCtx);
+        Player_VrWeldToSwordHand(play, chargeMtx);
+        gSPMatrix(POLY_XLU_DISP++, chargeMtx, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+    }
 
     gSPSegment(POLY_XLU_DISP++, 0x09,
                Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, (play->gameplayFrames * 5) & 0xFF, 0, 0x20, 0x20, 1,

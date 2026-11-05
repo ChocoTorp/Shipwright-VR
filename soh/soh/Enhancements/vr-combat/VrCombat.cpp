@@ -35,12 +35,32 @@ bool InterfaceOk() {
 }
 
 bool sWasActive = false;
+bool sSwingWasActive = false;
 
 // Aim-hand trigger edge, sampled once per tick (VR first person, independent of physical
 // combat): while READY_TO_FIRE, this fires the bow/slingshot/hookshot — the natural VR
 // release, since the walk-while-aiming path only knows the vanilla item-button-release fire.
 bool sProjTriggerPressed = false;
 bool sProjTriggerPrev = false;
+
+// Spin attack trigger (sword hand), sampled once per tick like the projectile trigger above.
+// Ticks are counted locally so the release can be matched against the most recent damaging swing.
+int sSpinTick = 0;
+bool sSpinHeld = false;
+bool sSpinArmed = false; // fresh squeeze, still held, not yet used to start a charge
+int sSpinReleaseTick = -1000;
+int sSpinHotStartTick = -1000; // tick the most recent damaging swing began
+bool sSpinHotWas = false;
+int sSpinChargeTick = -1000; // tick the current charge started
+bool sSpinFullBuzzed = false;
+// After letting go of the trigger, a damaging swing that starts within this many ticks still
+// spins (20 Hz ticks: ~0.4 s); otherwise the charge is put down.
+constexpr int kSpinReleaseGrace = 8;
+
+int SpinHand() {
+    // The sword rides Link's L_HAND limb, driven by the RIGHT controller when right-handed.
+    return CVarGetInteger("gVrLeftHanded", 0) ? VR_HAND_LEFT : VR_HAND_RIGHT;
+}
 
 int AimHand() {
     // The hand that aims held projectiles (see Player_VrAimHeldProjectile): the bow rides
@@ -73,15 +93,47 @@ void OnPlayerUpdateVrCombat() {
         sProjTriggerPrev = cur;
     }
 
+    // Spin attack trigger edges, the last damaging swing, and one buzz when the charge is full.
+    {
+        sSpinTick++;
+        const bool cur = VR_IsInitialized() && VR_GetFirstPerson() && (VR_GetGameButtons(SpinHand()) & VR_BTN_TRIGGER);
+        if (cur && !sSpinHeld) {
+            sSpinArmed = true;
+        } else if (!cur) {
+            sSpinArmed = false;
+            if (sSpinHeld) {
+                sSpinReleaseTick = sSpinTick;
+            }
+        }
+        sSpinHeld = cur;
+        const bool hot = VrCombat_SwingHot();
+        if (hot && !sSpinHotWas) {
+            sSpinHotStartTick = sSpinTick;
+        }
+        sSpinHotWas = hot;
+        const bool full = (player->stateFlags1 & PLAYER_STATE1_CHARGING_SPIN_ATTACK) && (player->unk_858 >= 0.85f);
+        if (full && !sSpinFullBuzzed) {
+            VR_TriggerHaptic(SpinHand(), 0.8f, 0.0f, 120.0f);
+        }
+        sSpinFullBuzzed = full;
+    }
+
+    // While the game's spin attack runs it owns the sword, so physical melee hands back to
+    // vanilla for those frames exactly as on any vanilla frame. The shield stays physical.
     const bool active = VrCombat_Active();
-    if (active) {
+    const bool swingActive = active && !Player_VrSpinAttacking(player);
+    if (swingActive) {
         VrCombat::Swing_OnPlayerUpdate(gPlayState, player);
+    } else if (sSwingWasActive) {
+        VrCombat::Swing_Deactivate(gPlayState, player);
+    }
+    if (active) {
         VrCombat::Shield_OnPlayerUpdate(gPlayState, player);
     } else if (sWasActive) {
-        VrCombat::Swing_Deactivate(gPlayState, player);
         VrCombat::Shield_Deactivate(gPlayState, player);
     }
     sWasActive = active;
+    sSwingWasActive = swingActive;
 
     for (int hand = 0; hand < 2; hand++) {
         sTickPath[hand].count = VR_GetHandPath(hand, sTickPath[hand].samples, ARRAY_COUNT(sTickPath[hand].samples));
@@ -89,6 +141,27 @@ void OnPlayerUpdateVrCombat() {
 }
 
 } // namespace
+
+extern "C" bool VrCombat_SpinTriggerArmed(void) {
+    return sSpinArmed;
+}
+
+extern "C" void VrCombat_SpinTriggerConsume(void) {
+    sSpinArmed = false;
+    sSpinChargeTick = sSpinTick;
+}
+
+extern "C" int32_t VrCombat_SpinRelease(void) {
+    // A damaging swing that began after the charge started spins, whether the trigger is still
+    // held or was let go just before the swing. The next spin needs a fresh squeeze (sSpinArmed).
+    if (sSpinHotStartTick > sSpinChargeTick) {
+        return 1;
+    }
+    if (sSpinHeld) {
+        return 0;
+    }
+    return (sSpinTick - sSpinReleaseTick > kSpinReleaseGrace) ? -1 : 0;
+}
 
 extern "C" bool VrCombat_ProjectileFirePressed(Player* player) {
     (void)player;

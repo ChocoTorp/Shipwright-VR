@@ -1023,6 +1023,10 @@ extern "C" bool VrCombat_MeleeCovered(Player* player) {
     return (held == 1) || (held == 2) || (held == 3) || (held == 4);
 }
 
+extern "C" bool VrCombat_SwingHot(void) {
+    return sTier == TIER_HOT;
+}
+
 extern "C" bool VrCombat_MeleeQuadsHit(void) {
     if (sQuadsPlay == nullptr) {
         return false;
