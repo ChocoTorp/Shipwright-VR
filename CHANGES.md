@@ -21,6 +21,7 @@
 - Fixed rare black textures caused by stale mipmap state.
 - Soft resets can no longer glitch the title screen.
 - Bombs, Zelda's Letter and trade items show as 3D.
+- Enemy health bar floats above the enemy in the world.
 
 
 ## Controls
@@ -115,6 +116,9 @@ The hand and space matrix registries are keyed by memory addresses that the game
 
 **Bombs, Zelda's Letter and trade items show as 3D.**
 Bombs waiting in front of your chest are now the real 3D bomb, like the Deku Nuts. Zelda's Letter, the eggs, the chickens and every trading-sequence item appear as 3D models in your hand. They are welded to the live hand pose, so they turn with your wrist and never trail. When you run out of nuts or bombs, the waiting model turns 30 percent see-through instead of disappearing.
+
+**Enemy health bar floats above the enemy in the world.**
+With SoH's enemy health bar anchored to the enemy, the bar was placed with the game camera's screen projection and drawn on the flat HUD panel, so in the headset it floated away from the enemy, in either view. In VR it is now drawn in the world, facing you just above the locked-on enemy, like the in-world lock-on reticle. The top and bottom screen anchors stay on the HUD.
 
 ## Controls
 
