@@ -21,6 +21,7 @@
 - Fixed rare black textures caused by stale mipmap state.
 - Soft resets can no longer glitch the title screen.
 - Bombs, Zelda's Letter and trade items show as 3D.
+- Landing ring ignores surfaces that shots fly through.
 
 
 ## Controls
@@ -115,6 +116,9 @@ The hand and space matrix registries are keyed by memory addresses that the game
 
 **Bombs, Zelda's Letter and trade items show as 3D.**
 Bombs waiting in front of your chest are now the real 3D bomb, like the Deku Nuts. Zelda's Letter, the eggs, the chickens and every trading-sequence item appear as 3D models in your hand. They are welded to the live hand pose, so they turn with your wrist and never trail. When you run out of nuts or bombs, the waiting model turns 30 percent see-through instead of disappearing.
+
+**Landing ring ignores surfaces that shots fly through.**
+The ring's flight simulation tested level geometry with the entity line test, but arrows and seeds fly with the projectile line test (EnArrow_Fly), which skips surfaces marked for projectiles to pass through. The ring could stop on a surface the shot would fly through. It now uses the projectile test, so it marks where the shot actually stops. The idea comes from gibranfelix/oot-vr, whose aim mark uses the same test.
 
 ## Controls
 
