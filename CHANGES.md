@@ -118,7 +118,7 @@ The hand and space matrix registries are keyed by memory addresses that the game
 Bombs waiting in front of your chest are now the real 3D bomb, like the Deku Nuts. Zelda's Letter, the eggs, the chickens and every trading-sequence item appear as 3D models in your hand. They are welded to the live hand pose, so they turn with your wrist and never trail. When you run out of nuts or bombs, the waiting model turns 30 percent see-through instead of disappearing.
 
 **Item compass no longer shows swords as bottles; Master Sword is 3D.**
-Items with no get-item model (the Master Sword maps to none) were drawn from the empty entry, whose model is the bottle. Such items now show their flat icon, and the Master Sword uses the randomizer's Master Sword entry, which has its own model.
+Items with no get-item model (the Master Sword maps to none) were drawn from the empty entry, whose model is the bottle. Such items now show their flat icon, and the Master Sword uses the randomizer's Master Sword entry, which has its own model. The broken Giant's Knife borrows the Broken Goron's Sword model, and a half-drunk milk bottle the full milk bottle's.
 
 ## Controls
 
