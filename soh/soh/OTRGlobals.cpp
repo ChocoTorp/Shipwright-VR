@@ -127,6 +127,7 @@ extern "C" void Android_SetDataRootPath(const char* path) {
 
 #include "soh/config/ConfigUpdaters.h"
 #include "soh/ShipInit.hpp"
+#include <vr_interface.h>
 #ifdef __ANDROID__
 #include <ship/port/mobile/MobileImpl.h>
 extern "C" int func_808334B4(Player* player);
@@ -2515,12 +2516,20 @@ extern "C" float OTRGetAspectRatio() {
     return Ship::Context::GetRawInstance()->GetWindow()->GetAspectRatio();
 }
 
+// SOH [VR] The window's aspect ratio is the eye texture's (narrower than 4:3 on every Quest), but
+// the HUD and the flat-screen panel are drawn into 4:3 targets. Anchoring to the eye aspect
+// squeezed the edge-anchored HUD toward the middle (left items moved right, the buttons moved
+// left) until they overlapped.
+static float OTRGetHudAspectRatio() {
+    return VR_IsInitialized() ? (4.0f / 3.0f) : OTRGetAspectRatio();
+}
+
 extern "C" float OTRGetDimensionFromLeftEdge(float v) {
-    return (SCREEN_WIDTH / 2 - SCREEN_HEIGHT / 2 * OTRGetAspectRatio() + (v));
+    return (SCREEN_WIDTH / 2 - SCREEN_HEIGHT / 2 * OTRGetHudAspectRatio() + (v));
 }
 
 extern "C" float OTRGetDimensionFromRightEdge(float v) {
-    return (SCREEN_WIDTH / 2 + SCREEN_HEIGHT / 2 * OTRGetAspectRatio() - (SCREEN_WIDTH - v));
+    return (SCREEN_WIDTH / 2 + SCREEN_HEIGHT / 2 * OTRGetHudAspectRatio() - (SCREEN_WIDTH - v));
 }
 
 // Gets the width of the current render target area
