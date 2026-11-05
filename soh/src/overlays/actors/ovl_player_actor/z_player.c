@@ -2108,6 +2108,21 @@ static s32 Player_VrDirectMovement(Player* this) {
     return VR_IsInitialized() && VR_GetFirstPerson() && CVarGetInteger("gVrBodyFollowsHead", 1);
 }
 
+// SOH [VR] Physical-combat spin attack. The swing is the attack for covered swords, so the B-held
+// charge has its own input: hold the sword hand's trigger (idle while such a sword is out) to
+// charge, then swing as you let go to release. Past that it is the game's own charge and spin
+// (EnMThunder glow and magic cost, big spin from 85% charge), driven by VrCombat_SpinRelease()
+// instead of the B button.
+static s32 Player_VrSpinMode(Player* this) {
+    return VrCombat_Active() && VrCombat_MeleeCovered(this);
+}
+
+// The game's spin attack is running. It owns the sword (animated hand, damage quads,
+// meleeWeaponState) until the attack action ends; the physical path stands down meanwhile.
+int32_t Player_VrSpinAttacking(Player* this) {
+    return (this->actionFunc == Player_Action_808502D0) && (this->meleeWeaponAnimation >= PLAYER_MWA_SPIN_ATTACK_1H);
+}
+
 // SOH [VR] The neutral ground-locomotion actions (idle, walk, run, strafes, turn-around). ONLY in
 // these does the kinematic stick override drive velocity directly — rolls, attacks, jumps,
 // knockbacks and every other action keep their authored motion untouched.
@@ -6979,9 +6994,16 @@ void func_8083C50C(Player* this) {
 }
 
 s32 Player_ActionHandler_8(Player* this, PlayState* play) {
-    // SOH [VR] Physical combat: no button-held spin charge for covered weapons (the spin attack
-    // returns later as a motion gesture).
-    if (VrCombat_Active() && VrCombat_MeleeCovered(this)) {
+    // SOH [VR] Physical combat: no button-held spin charge for covered weapons. A fresh squeeze of
+    // the sword hand's trigger starts it instead (same weapon rules as below).
+    if (Player_VrSpinMode(this)) {
+        if (VrCombat_SpinTriggerArmed() && !(this->stateFlags1 & PLAYER_STATE1_SHIELDING) &&
+            (this->heldItemAction != PLAYER_IA_DEKU_STICK) &&
+            ((this->heldItemAction != PLAYER_IA_SWORD_BIGGORON) || (gSaveContext.swordHealth > 0.0f))) {
+            VrCombat_SpinTriggerConsume();
+            func_808377DC(play, this);
+            return 1;
+        }
         return 0;
     }
 
@@ -10365,13 +10387,24 @@ void Player_Action_80844AF4(Player* this, PlayState* play) {
     }
 }
 
+void func_80844D68(Player* this, PlayState* play);
+
 s32 func_80844BE4(Player* this, PlayState* play) {
     s32 temp;
 
     if (Player_StartCsAction(play, this)) {
         this->stateFlags2 |= PLAYER_STATE2_SPIN_ATTACKING;
     } else {
-        if (!CHECK_BTN_ALL(sControlInput->cur.button, BTN_B)) {
+        // SOH [VR] Physical combat: the trigger replaces B, and letting go only spins together
+        // with a swing; no swing in time puts the charge down like an early B release.
+        s32 vrSpinMode = Player_VrSpinMode(this);
+        s32 vrRelease = vrSpinMode ? VrCombat_SpinRelease() : 0;
+
+        if (vrRelease < 0) {
+            func_80844D68(this, play);
+            return 1;
+        }
+        if (vrSpinMode ? (vrRelease > 0) : !CHECK_BTN_ALL(sControlInput->cur.button, BTN_B)) {
             if ((this->unk_858 >= 0.85f) || Player_CanSpinAttack(this)) {
                 temp = D_80854384[Player_HoldsTwoHandedWeapon(this)];
             } else {
@@ -10443,6 +10476,9 @@ void Player_Action_80844E68(Player* this, PlayState* play) {
             if (this->unk_858 >= 0.1f) {
                 this->unk_845 = 0;
                 this->av2.actionVar2 = 1;
+            } else if (Player_VrSpinMode(this)) {
+                // SOH [VR] Squeeze and swing straight away: the small spin, before the charge builds.
+                func_80844BE4(this, play);
             } else if (!CHECK_BTN_ALL(sControlInput->cur.button, BTN_B)) {
                 func_80844D68(this, play);
             }

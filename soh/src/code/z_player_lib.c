@@ -1520,6 +1520,24 @@ static s32 sVrHandInvertCulling = false;
 static MtxF sVrHandLimbMtxF[2];
 static s32 sVrHandLimbFrame[2] = { -1, -1 };
 
+// SOH [VR] For effects built on mf_9E0 (the sword hand's game-rate pose), such as the spin charge
+// glow and sparkles: with the current matrix stack as the effect's pose, register its new Mtx as a
+// child of the live sword hand so it stays on the sword at headset rate. Needs the player drawn
+// first this frame (true for later actor categories); otherwise the plain matrix is left as is.
+void Player_VrWeldToSwordHand(PlayState* play, Mtx* mtx) {
+    s32 vrHand = CVarGetInteger("gVrLeftHanded", 0) ? VR_HAND_LEFT : VR_HAND_RIGHT; // L_HAND limb
+    if (VR_IsInitialized() && VR_GetFirstPerson() && CVarGetInteger("gVrMotionHands", 1) &&
+        (sVrHandLimbFrame[vrHand] == (s32)play->state.frames)) {
+        MtxF vrCur;
+        MtxF vrInv;
+        MtxF vrLocal;
+        Matrix_Get(&vrCur);
+        SkinMatrix_Invert(&sVrHandLimbMtxF[vrHand], &vrInv);
+        SkinMatrix_MtxFMtxFMult(&vrInv, &vrCur, &vrLocal);
+        VR_RegisterHandChildMatrix((const void*)mtx, vrHand, &vrLocal.mf[0][0]);
+    }
+}
+
 s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot,
                                                  void* thisx) {
     Player* this = (Player*)thisx;
@@ -1560,6 +1578,11 @@ s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex,
         if (limbIndex == PLAYER_LIMB_L_SHOULDER || limbIndex == PLAYER_LIMB_L_FOREARM ||
             limbIndex == PLAYER_LIMB_R_SHOULDER || limbIndex == PLAYER_LIMB_R_FOREARM) {
             *dList = NULL;
+            return ret;
+        }
+        // SOH [VR] The game's spin attack swings the sword around Link with its animation (that
+        // sweep is the spin's damage), so the sword hand follows the animation until it ends.
+        if ((limbIndex == PLAYER_LIMB_L_HAND) && Player_VrSpinAttacking(this)) {
             return ret;
         }
         if (limbIndex == PLAYER_LIMB_L_HAND || limbIndex == PLAYER_LIMB_R_HAND) {
@@ -2006,7 +2029,8 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             gSPDisplayList(POLY_OPA_DISP++, gLinkChildLinkDekuStickDL);
 
             CLOSE_DISPS(play->state.gfxCtx);
-        } else if ((this->actor.scale.y >= 0.0f) && VrCombat_Active() && VrCombat_MeleeCovered(this)) {
+        } else if ((this->actor.scale.y >= 0.0f) && VrCombat_Active() && VrCombat_MeleeCovered(this) &&
+                   !Player_VrSpinAttacking(this)) {
             // SOH [VR] Physical combat: blade collision comes from the real swing path, velocity-
             // gated, instead of attack-animation state. The hand limb matrix on the stack here IS
             // the controller pose; VrCombat_FeedMelee builds its own blade geometry through it

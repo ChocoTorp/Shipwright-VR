@@ -34,6 +34,7 @@
 - Nut preview waits in front of your chest, space-locked.
 - Add a second button to open the settings menu.
 - Archery landing target and flight line have separate switches.
+- Spin attack: hold the sword hand's trigger to charge, swing to spin.
 
 
 ## Optimization
@@ -144,6 +145,9 @@ The left menu button (the hamburger) always opens the settings menu. A new optio
 
 **Archery landing target and flight line have separate switches.**
 The slingshot and bow landing target (ring and dot) and the flight path line are now two independent settings. Both live in VR Settings under Items and Archery, in an Archery Targeting section. You can show either one, both or neither. The target is on and the line is off by default.
+
+**Spin attack: hold the sword hand's trigger to charge, swing to spin.**
+With physical sword combat the swing is the attack, so the B-held spin charge was turned off. The spin now has its own input: squeeze the sword hand's trigger (idle while a sword is out) to start the game's own charge, and swing while holding it, or just after letting go, to release the spin. Letting go without a swing puts the charge down, like an early B release. A quick squeeze and swing gives the small spin; a full charge (85 percent, with one buzz when it is reached) gives the big one, with the usual magic cost. While the spin runs the game's animation owns the sword, so its sweep deals the spin's damage, and the charge glow stays on the live sword hand.
 
 ## Optimization
 

@@ -51,6 +51,25 @@ bool VrCombat_MeleeQuadsHit(void);
 // 0 -> nonzero edge. The vr-combat module drives the state from real hand motion.
 void VrCombat_SetMeleeWeaponState(struct Player* player, int32_t newState);
 
+// --- Spin attack (VrCombat.cpp, z_player.c) ---
+// Covered swords lose the B-held spin charge, so the spin takes the sword hand's trigger (idle
+// while such a sword is out): hold to charge, swing as you let go to release. The charge and
+// spin themselves stay the game's own.
+// TriggerArmed: the trigger was freshly squeezed and is still held, and no charge has used this
+// squeeze yet. TriggerConsume: a charge started from it.
+bool VrCombat_SpinTriggerArmed(void);
+void VrCombat_SpinTriggerConsume(void);
+// For a charge in progress: 1 = a damaging swing began since the charge started (trigger held or
+// just released), spin now; 0 = still waiting for the swing; -1 = released with no swing in time,
+// cancel.
+int32_t VrCombat_SpinRelease(void);
+// VrSwing.cpp: the last draw's swing was fast enough to damage (TIER_HOT).
+bool VrCombat_SwingHot(void);
+// Implemented in z_player.c (// SOH [VR]): the game's spin attack action is running. It owns
+// the sword (animated hand, damage quads, meleeWeaponState) until it ends, so the physical
+// melee path stands down for those frames.
+int32_t Player_VrSpinAttacking(struct Player* player);
+
 // Visual-mesh harvest exclusion: brackets a display-list section the physical blade must NOT
 // collide with (the player's own arms/weapon, the sword trail) by emitting mask marker
 // commands into the OPA and XLU buckets. No-ops while physical combat is inactive.

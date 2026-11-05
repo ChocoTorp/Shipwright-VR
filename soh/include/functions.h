@@ -1142,6 +1142,7 @@ s32 Player_ActionToMeleeWeapon(s32 actionParam);
 s32 Player_GetMeleeWeaponHeld(Player* player);
 s32 Player_HoldsTwoHandedWeapon(Player* player);
 s32 Player_HoldsBrokenKnife(Player* player);
+void Player_VrWeldToSwordHand(PlayState* play, Mtx* mtx);
 s32 Player_ActionToBottle(Player* player, s32 actionParam);
 s32 Player_GetBottleHeld(Player* player);
 s32 Player_ActionToExplosive(Player* player, s32 actionParam);
