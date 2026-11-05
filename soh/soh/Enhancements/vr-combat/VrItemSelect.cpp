@@ -17,14 +17,18 @@ GetItemEntry ItemTable_RetrieveEntry(s16 modIndex, s16 getItemID);
 // The 3D model for an item: its get-item entry. The Master Sword has no vanilla get-item entry (it
 // maps to GI_MAX), so it borrows the randomizer's Master Sword entry, which carries its own model.
 // The broken Giant's Knife (ITEM_SWORD_KNIFE, which the B button holds once the knife breaks) has
-// no get-item either, so it takes the Broken Goron's Sword's, the nearest broken blade. Returns the
-// empty entry (itemId ITEM_NONE) when an item has no model.
+// no get-item either, so it takes the Broken Goron's Sword's, the nearest broken blade. A half-drunk
+// milk bottle has none either and takes the full milk bottle's. Returns the empty entry (itemId
+// ITEM_NONE) when an item has no model.
 static GetItemEntry ItemModelEntry(u8 item) {
     if (item == ITEM_SWORD_MASTER) {
         return ItemTable_RetrieveEntry(MOD_RANDOMIZER, RG_MASTER_SWORD);
     }
     if (item == ITEM_SWORD_KNIFE) {
         return ItemTable_Retrieve(GI_SWORD_BROKEN);
+    }
+    if (item == ITEM_MILK_HALF) {
+        return ItemTable_Retrieve(GI_MILK_BOTTLE);
     }
     const GetItemID gi = RetrieveGetItemIDFromItemID((ItemID)item);
     if (gi == GI_NONE || gi == GI_MAX) {
