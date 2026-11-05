@@ -1484,6 +1484,37 @@ void Play_Draw(PlayState* play) {
             // Also bound the camera-to-body lean by distance, for places with no wall at head height
             // (ledges, railings) where it could otherwise drift far from Link (0 = unbounded).
             VR_ClampRoomscaleLean(CVarGetFloat("gVrRoomscaleMaxLean", 30.0f));
+            // Near-plane wall clearance. The eye sits gVrHeadOffsetForward ahead of Link's root, but
+            // his body only stops wallCheckRadius (adult 18, child 14) short of a wall, so walking
+            // into a wall or climbing put the eye 8-12 units from the surface. The near clip plane
+            // is 10 units out and its corners reach ~16 units from the eye at the Quest's FOV, so
+            // the wall was cut open. Sweep the ACTUAL eye (body head + current head lean) out from
+            // Link's body at eye height and push it back to gVrCameraWallClearance from any wall.
+            // The push moves only this tick's anchor, never the roomscale origin, so it can't
+            // accumulate. Crawlspaces use the crawl collision radius so the tunnel never pushes the
+            // eye further than it pushes Link.
+            {
+                f32 vrClearance = CVarGetFloat("gVrCameraWallClearance", 16.0f);
+                if (vrPlayer->stateFlags2 & PLAYER_STATE2_CRAWLING) {
+                    vrClearance = MIN(vrClearance, 10.0f);
+                }
+                if (vrClearance > 0.0f) {
+                    float vrLean[2];
+                    VR_GetRoomscaleDesired(vrLean);
+                    const f32 vrCheckHeight = 10.0f;
+                    Vec3f vrEyeFrom = { vrPlayer->actor.world.pos.x, vrHead.y - vrCheckHeight,
+                                        vrPlayer->actor.world.pos.z };
+                    Vec3f vrEyeTo = { vrHead.x + vrLean[0], vrEyeFrom.y, vrHead.z + vrLean[1] };
+                    Vec3f vrEyeRes;
+                    CollisionPoly* vrEyePoly;
+                    s32 vrEyeBgId;
+                    if (BgCheck_EntitySphVsWall3(&play->colCtx, &vrEyeRes, &vrEyeTo, &vrEyeFrom, vrClearance,
+                                                 &vrEyePoly, &vrEyeBgId, &vrPlayer->actor, vrCheckHeight)) {
+                        vrHead.x += vrEyeRes.x - vrEyeTo.x;
+                        vrHead.z += vrEyeRes.z - vrEyeTo.z;
+                    }
+                }
+            }
             float vrRsOrigin[2];
             VR_GetRoomscaleOrigin(vrRsOrigin);
             vrHead.x -= vrRsOrigin[0];
