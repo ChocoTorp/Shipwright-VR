@@ -21,6 +21,7 @@
 - Fixed rare black textures caused by stale mipmap state.
 - Soft resets can no longer glitch the title screen.
 - Bombs, Zelda's Letter and trade items show as 3D.
+- HUD items stay in their corners instead of overlapping.
 
 
 ## Controls
@@ -115,6 +116,9 @@ The hand and space matrix registries are keyed by memory addresses that the game
 
 **Bombs, Zelda's Letter and trade items show as 3D.**
 Bombs waiting in front of your chest are now the real 3D bomb, like the Deku Nuts. Zelda's Letter, the eggs, the chickens and every trading-sequence item appear as 3D models in your hand. They are welded to the live hand pose, so they turn with your wrist and never trail. When you run out of nuts or bombs, the waiting model turns 30 percent see-through instead of disappearing.
+
+**HUD items stay in their corners instead of overlapping.**
+The HUD anchored its edge items with the eye image's aspect ratio, which is narrower than 4:3 on every Quest. The HUD panel itself is 4:3, so the left items slid right and the buttons slid left until the magic meter ran into them. In VR the edge anchoring now uses 4:3, the HUD panel's own shape.
 
 ## Controls
 
