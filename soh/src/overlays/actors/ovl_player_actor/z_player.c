@@ -2727,6 +2727,7 @@ void Player_UpdateItems(Player* this, PlayState* play) {
         }
     }
     // SOH [VR] Grip preparation/release is separate from item-button activation.
+    VrItemThrow_LiftTick(play, this);
     VrItemThrow_Tick(play, this);
     if ((this->actor.category == ACTORCAT_PLAYER) &&
         (CVarGetInteger(CVAR_ENHANCEMENT("QuickPutaway"), 0) ||
@@ -3915,6 +3916,70 @@ void Player_VrReleaseItem(PlayState* play, Player* this, const float* velocity) 
     }
     Player_DetachHeldActor(play, this);
     Player_VrRestorePassiveSelection(this, action, item);
+}
+
+// SOH [VR] Physical lift of a world object (pot, crate, small rock, bush, bomb flower). The
+// object offered itself this frame through Actor_OfferGetItem(GI_NONE), so Link's state gates
+// already passed. These are the remaining A-button lift gates (Player_ActionHandler_2 and
+// func_8083A0F4), then the attach vanilla does on frame 4 of the lift animation, without the
+// animation: Link keeps moving and only the upper body carries.
+bool Player_VrLiftActor(PlayState* play, Player* this, Actor* actor) {
+    if (actor == NULL || this->heldActor != NULL ||
+        (this->stateFlags1 & (PLAYER_STATE1_CARRYING_ACTOR | PLAYER_STATE1_IN_CUTSCENE |
+                              PLAYER_STATE1_BOOMERANG_THROWN | PLAYER_STATE1_READY_TO_FIRE)) ||
+        (this->stateFlags3 & PLAYER_STATE3_FLYING_WITH_HOOKSHOT) || this->heldItemAction != this->itemAction ||
+        this->csAction != 0 || play->csCtx.state != CS_STATE_IDLE ||
+        !TitleCard_Clear(play, &play->actorCtx.titleCtx)) {
+        return false;
+    }
+    // Vanilla's no-strength case plays the "can't lift" animation instead of lifting.
+    if (GameInteractor_Should(VB_PREVENT_STRENGTH,
+                              ((actor->id == ACTOR_EN_BOMBF) || (actor->id == ACTOR_EN_KUSA)) &&
+                                  (Player_GetStrength() <= PLAYER_STR_NONE))) {
+        Sfx_PlaySfxCentered(NA_SE_SY_ERROR);
+        return false;
+    }
+    // Vanilla puts the held item away first (Player_PutAwayHeldItem's condition); done
+    // instantly here, the same way Player_UseItem inits an item that needs no change animation.
+    if (this->heldItemAction >= PLAYER_IA_FISHING_POLE) {
+        this->nextModelGroup = Player_ActionToModelGroup(this, PLAYER_IA_NONE);
+        Player_InitItemActionWithAnim(play, this, PLAYER_IA_NONE);
+        this->heldItemId = ITEM_NONE;
+    }
+    this->interactRangeActor = actor;
+    this->getItemId = GI_NONE;
+    this->getItemEntry = (GetItemEntry)GET_ITEM_NONE;
+    this->heldActor = actor;
+    this->actor.child = actor;
+    actor->parent = &this->actor;
+    actor->bgCheckFlags &= 0xFF00;
+    this->unk_3BC.y = 0;
+    this->stateFlags1 |= PLAYER_STATE1_CARRYING_ACTOR;
+    Player_SetUpperActionFunc(this, Player_UpperAction_CarryActor);
+    LinkAnimation_PlayLoop(play, &this->upperSkelAnime, &gPlayerAnim_link_normal_carryB_wait);
+    sUseHeldItem = sHeldItemButtonIsHeldDown = false;
+    return true;
+}
+
+// SOH [VR] Release of a physically lifted object: vanilla's throw (func_8084409C) and put-down
+// (Player_Action_808464B0) both set the object's motion and then call func_80834644. Here the
+// motion is the hand's (velocity in game units per frame); the object's own thrown state then
+// runs exactly as in vanilla.
+void Player_VrReleaseLifted(PlayState* play, Player* this, const float* velocity) {
+    Actor* held = this->heldActor;
+    if (held == NULL || held->parent != &this->actor || !(this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
+        return;
+    }
+    VrItemThrow_UpdateCarryPose(this);
+    held->velocity.x = velocity[0];
+    held->velocity.y = velocity[1];
+    held->velocity.z = velocity[2];
+    held->speedXZ = sqrtf(SQ(velocity[0]) + SQ(velocity[2]));
+    held->world.rot.y = Math_Atan2S(velocity[2], velocity[0]);
+    func_80834644(play, this);
+    if (held->speedXZ > 2.0f) {
+        Player_PlaySfx(this, NA_SE_PL_THROW);
+    }
 }
 
 void func_80836448(PlayState* play, Player* this, LinkAnimationHeader* anim) {
@@ -7904,6 +7969,12 @@ s32 Player_ActionHandler_2(Player* this, PlayState* play) {
                         return 0;
                     }
 
+                    // SOH [VR] First person with motion hands: A lifts a pot, crate, small rock, bush
+                    // or bomb flower straight into the nearest hand instead of over Link's head.
+                    if (VrItemThrow_LiftWithButton(play, this, interactedActor)) {
+                        return 1;
+                    }
+
                     Player_SetupWaitForPutAway(play, this, func_8083A0F4);
                 }
 
@@ -7935,6 +8006,15 @@ s32 Player_ActionHandler_9(Player* this, PlayState* play) {
     // SOH [VR] Grip release owns physical throws; A/B/C must not also start the
     // walk-dependent vanilla drop/throw animation while holding a bomb or nut.
     if (VrItemThrow_Active(this)) return 0;
+    // SOH [VR] Holding a physically lifted object: A throws it with the holding hand's motion
+    // (the grip release does the same); B and the C buttons do nothing.
+    if (VrItemThrow_LiftCarrying(this)) {
+        if (CHECK_BTN_ALL(sControlInput->press.button, BTN_A)) {
+            VrItemThrow_LiftThrowNow(play, this);
+            return 1;
+        }
+        return 0;
+    }
     u16 buttonsToCheck = BTN_A | BTN_B | BTN_CLEFT | BTN_CRIGHT | BTN_CDOWN;
     if (CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0) != 0) {
         buttonsToCheck |= BTN_DUP | BTN_DDOWN | BTN_DLEFT | BTN_DRIGHT;

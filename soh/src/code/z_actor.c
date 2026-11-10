@@ -2178,6 +2178,12 @@ s32 Actor_OfferGetItem(Actor* actor, PlayState* play, s32 getItemId, f32 xzRange
         if ((((player->heldActor != NULL) || (actor == player->talkActor)) &&
              ((getItemId > GI_NONE) && (getItemId < GI_MAX))) ||
             (!(player->stateFlags1 & (PLAYER_STATE1_CARRYING_ACTOR | PLAYER_STATE1_IN_CUTSCENE)))) {
+            // SOH [VR] Physical lifting: a liftable object offering itself is a grab candidate
+            // when a hand is on it, whatever Link's body distance or facing. The vanilla offer
+            // below is unchanged, so the A-button lift still works.
+            if (getItemId == GI_NONE) {
+                VrItemThrow_OfferLift(actor);
+            }
             if ((actor->xzDistToPlayer < xzRange) && (fabsf(actor->yDistToPlayer) < yRange)) {
                 s16 yawDiff = actor->yawTowardsPlayer - player->actor.shape.rot.y;
                 s32 absYawDiff = ABS(yawDiff);

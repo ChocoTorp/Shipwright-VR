@@ -25,6 +25,8 @@
 
 ## Controls
 
+- Grab pots, crates, rocks, bushes and bomb flowers by hand.
+- Throw them with your swing; strength slider in settings.
 - Smooth turning replaces snap turning as the default setting.
 - In-headset settings menu with a laser pointer to click.
 - Left menu button opens settings; stick click pauses game.

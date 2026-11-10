@@ -242,7 +242,7 @@ void QuickSwapTick() {
     const bool chord = SwapChordHeld();
     const bool rising = chord && !sChordPrev;
     sChordPrev = chord;
-    if (!rising || sOpen || !SelectorAvailable()) {
+    if (!rising || sOpen || !SelectorAvailable() || VrItemThrow_LiftEngaged()) {
         return;
     }
     Player* player = GET_PLAYER(gPlayState);
@@ -794,7 +794,7 @@ extern "C" bool VrItemSelect_SwapConsumed(int32_t vrHand, uint16_t vrBtnMask) {
     // so the swap doesn't also recenter the camera or flash a shield stance. Stands down
     // during ocarina play like every other selector reservation.
     (void)vrHand;
-    if (!CVarGetInteger("gVrItemSelect", 1) || OcarinaInPlay()) {
+    if (!CVarGetInteger("gVrItemSelect", 1) || OcarinaInPlay() || VrItemThrow_LiftEngaged()) {
         return false;
     }
     return (vrBtnMask & SwapMask()) != 0 && SwapChordHeld();
