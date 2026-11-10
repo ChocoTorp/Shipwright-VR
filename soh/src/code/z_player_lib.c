@@ -1047,6 +1047,8 @@ Gfx* sBootDListGroups[][2] = {
     { gLinkAdultLeftHoverBootDL, gLinkAdultRightHoverBootDL }, // PLAYER_BOOTS_HOVER
 };
 
+void Player_VrDrawBraceletAtHand(PlayState* play, Player* this, void** skeleton, Vec3s* jointTable, s32 dListCount);
+
 void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount, s32 lod, s32 tunic, s32 boots,
                      s32 face, OverrideLimbDrawOpa overrideLimbDraw, PostLimbDrawOpa postLimbDraw, void* data) {
     Color_RGB8* color;
@@ -1129,8 +1131,14 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
                 }
                 gDPSetEnvColor(POLY_OPA_DISP++, color->r, color->g, color->b, 0);
 
-                gSPDisplayList(POLY_OPA_DISP++, gLinkAdultLeftGauntletPlate1DL);
-                gSPDisplayList(POLY_OPA_DISP++, gLinkAdultRightGauntletPlate1DL);
+                // SOH [VR] The forearm plates ride Link's animated forearms, which motion-control hands
+                // hide while the hands float to the controllers, so the plates hung where his body's
+                // hands are. Skip them with the forearms; the hand plates follow the hands.
+                if (!((overrideLimbDraw == Player_OverrideLimbDrawGameplayVRFirstPerson) &&
+                      CVarGetInteger("gVrMotionHands", 1))) {
+                    gSPDisplayList(POLY_OPA_DISP++, gLinkAdultLeftGauntletPlate1DL);
+                    gSPDisplayList(POLY_OPA_DISP++, gLinkAdultRightGauntletPlate1DL);
+                }
                 gSPDisplayList(POLY_OPA_DISP++, (sLeftHandType == PLAYER_MODELTYPE_LH_OPEN)
                                                     ? gLinkAdultLeftGauntletPlate2DL
                                                     : gLinkAdultLeftGauntletPlate3DL);
@@ -1147,7 +1155,16 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
             }
         } else {
             if (Player_GetStrength() > PLAYER_STR_NONE) {
-                gSPDisplayList(POLY_OPA_DISP++, gLinkChildGoronBraceletDL);
+                // SOH [VR] The bracelet is skinned to Link's left forearm, which motion-control hands
+                // hide while the hands float to the controllers, so it hung on the invisible body's
+                // arm. Draw it at the VR hand's wrist instead; with no hand pose this frame, skip it
+                // with the forearm, like the gauntlets' forearm plates above.
+                if ((overrideLimbDraw == Player_OverrideLimbDrawGameplayVRFirstPerson) &&
+                    CVarGetInteger("gVrMotionHands", 1)) {
+                    Player_VrDrawBraceletAtHand(play, (Player*)data, skeleton, jointTable, dListCount);
+                } else {
+                    gSPDisplayList(POLY_OPA_DISP++, gLinkChildGoronBraceletDL);
+                }
             }
         }
     }
@@ -1519,6 +1536,68 @@ static s32 sVrHandInvertCulling = false;
 // welding derived geometry to the live-rendered hand instead of trailing it at game rate.
 static MtxF sVrHandLimbMtxF[2];
 static s32 sVrHandLimbFrame[2] = { -1, -1 };
+
+// SOH [VR] Child Link's Goron bracelet at the VR hand that draws his left hand (L_HAND limb).
+// The bracelet's vertices are skinned to the left forearm through the limb matrices in segment
+// 0x0D. Point every entry of a substitute array at (hand pose) x Translate(-wrist), where wrist is
+// the L_HAND joint's position in the forearm's space, so the bracelet sits behind the hand, touching
+// the wrist as on the full body. Each entry is a live child of the hand, so it moves at headset rate.
+void Player_VrDrawBraceletAtHand(PlayState* play, Player* this, void** skeleton, Vec3s* jointTable, s32 dListCount) {
+    s32 vrHand = CVarGetInteger("gVrLeftHanded", 0) ? VR_HAND_LEFT : VR_HAND_RIGHT; // L_HAND limb
+    if (!VR_IsInitialized() || (sVrHandLimbFrame[vrHand] != (s32)play->state.frames) || (dListCount <= 0)) {
+        return;
+    }
+    LodLimb* handLimb = (LodLimb*)SEGMENTED_TO_VIRTUAL(skeleton[PLAYER_LIMB_L_HAND - 1]);
+    // An empty hand's mesh is drawn shrunk around its palm (the renderer's QuestShip mesh scaling:
+    // hand x Scale(gVrHandMeshScale) x Translate(-gVrHandPalm)), so the wrist moves with it; apply
+    // the same to the bracelet so it stays on that wrist.
+    s32 meshScaled = (this->leftHandType == PLAYER_MODELTYPE_LH_OPEN) ||
+                     (this->leftHandType == PLAYER_MODELTYPE_LH_CLOSED);
+    f32 k = meshScaled ? CVarGetFloat("gVrHandMeshScale", 0.75f) : 1.0f;
+    f32 palmX = meshScaled ? CVarGetFloat("gVrHandPalmX", 0.0f) : 0.0f;
+    f32 palmY = meshScaled ? CVarGetFloat("gVrHandPalmY", 400.0f) : 0.0f;
+    f32 palmZ = meshScaled ? CVarGetFloat("gVrHandPalmZ", 0.0f) : 0.0f;
+    // Forearm space -> hand space is the inverse of the hand joint's own transform in the skeleton,
+    // Translate(jointPos) x RotateZYX(this frame's wrist rotation, jointTable[L_HAND]), exactly as
+    // SkelAnime_DrawFlexLod builds it. Leaving out the wrist rotation turned the bracelet sideways.
+    MtxF handJoint;
+    MtxF foreToHand;
+    SkinMatrix_SetTranslateRotateZYX(&handJoint, jointTable[PLAYER_LIMB_L_HAND].x, jointTable[PLAYER_LIMB_L_HAND].y,
+                                     jointTable[PLAYER_LIMB_L_HAND].z, handLimb->jointPos.x, handLimb->jointPos.y,
+                                     handLimb->jointPos.z);
+    SkinMatrix_Invert(&handJoint, &foreToHand);
+    MtxF scale;
+    MtxF palm;
+    MtxF scalePalm;
+    MtxF local;
+    SkinMatrix_SetScale(&scale, k, k, k);
+    SkinMatrix_SetTranslate(&palm, -palmX, -palmY, -palmZ);
+    SkinMatrix_MtxFMtxFMult(&scale, &palm, &scalePalm);
+    SkinMatrix_MtxFMtxFMult(&scalePalm, &foreToHand, &local);
+    MtxF world;
+    SkinMatrix_MtxFMtxFMult(&sVrHandLimbMtxF[vrHand], &local, &world);
+
+    Mtx* mtx = Graph_Alloc(play->state.gfxCtx, dListCount * sizeof(Mtx));
+    for (s32 i = 0; i < dListCount; i++) {
+        Matrix_MtxFToMtx(&world, &mtx[i]);
+        VR_RegisterHandChildMatrix((const void*)&mtx[i], vrHand, &local.mf[0][0]);
+    }
+    // A mirrored hand pose flips triangle winding, as on the hand itself.
+    const MtxF* h = &sVrHandLimbMtxF[vrHand];
+    f32 det = h->xx * (h->yy * h->zz - h->zy * h->yz) - h->xy * (h->yx * h->zz - h->zx * h->yz) +
+              h->xz * (h->yx * h->zy - h->zx * h->yy);
+
+    OPEN_DISPS(play->state.gfxCtx);
+    gSPSegment(POLY_OPA_DISP++, 0x0D, mtx);
+    if (det < 0.0f) {
+        gSPSetExtraGeometryMode(POLY_OPA_DISP++, G_EX_INVERT_CULLING);
+    }
+    gSPDisplayList(POLY_OPA_DISP++, gLinkChildGoronBraceletDL);
+    if (det < 0.0f) {
+        gSPClearExtraGeometryMode(POLY_OPA_DISP++, G_EX_INVERT_CULLING);
+    }
+    CLOSE_DISPS(play->state.gfxCtx);
+}
 
 s32 Player_OverrideLimbDrawGameplayVRFirstPerson(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot,
                                                  void* thisx) {
