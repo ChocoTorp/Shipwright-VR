@@ -1627,6 +1627,37 @@ void SohMenu::AddMenuVRSettings() {
                               "with your sword hand and squeeze grip to grab; release grip to throw. "
                               "Switching equipment drops the held item without a throw impulse. "
                               "Disable for button-operated use after selection."));
+    AddWidget(devPath, "Pots, Rocks & Bushes", WIDGET_SEPARATOR_TEXT);
+    AddWidget(devPath, "Physical Lifting", WIDGET_CVAR_CHECKBOX)
+        .CVar("gVrPhysicalLift")
+        .Options(CheckboxOptions()
+                     .DefaultValue(true)
+                     .Tooltip("First person with motion-controlled hands: put a hand on a pot, small "
+                              "crate, small rock, bush or bomb flower and squeeze grip to pick it up "
+                              "in that hand; release grip to throw it with your hand's motion. "
+                              "A still lifts the vanilla way. Cuccos, silver boulders and other "
+                              "liftables keep the vanilla lift."));
+    AddWidget(devPath, "Throw Strength: %.2fx", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrLiftThrowStrength")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalLift", 1); })
+        .Options(FloatSliderOptions()
+                     .Min(0.25f)
+                     .Max(10.0f)
+                     .DefaultValue(1.0f)
+                     .Step(0.25f)
+                     .Format("%.2f")
+                     .Tooltip("Multiplies how fast a lifted object leaves your hand. 1.0 is the same "
+                              "strength as bomb and nut throws."));
+    AddWidget(devPath, "Grab Reach: %.0f cm", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar("gVrLiftReach")
+        .PreFunc([](WidgetInfo& info) { info.isHidden = !CVarGetInteger("gVrPhysicalLift", 1); })
+        .Options(FloatSliderOptions()
+                     .Min(5.0f)
+                     .Max(40.0f)
+                     .DefaultValue(15.0f)
+                     .Step(1.0f)
+                     .Format("%.0f")
+                     .Tooltip("How close your hand has to be to an object's surface to grab it."));
     AddWidget(devPath, "Slingshot & Bow", WIDGET_SEPARATOR_TEXT);
     AddWidget(devPath, "Physical Archery", WIDGET_CVAR_CHECKBOX)
         .CVar("gVrPhysArchery")

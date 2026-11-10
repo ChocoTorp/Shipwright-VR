@@ -8,6 +8,7 @@ extern "C" {
 extern PlayState* gPlayState;
 }
 #include "VrCombat.h"
+#include "VrMath.h"
 
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ShipInit.hpp"
@@ -64,16 +65,6 @@ float WorldScale() {
     return ws < 1.0f ? 35.0f : ws;
 }
 
-// Rotate a vector by a unit quaternion (x, y, z, w) — same layout the runtime hands out.
-void QuatRot(const float q[4], const float v[3], float out[3]) {
-    const float tx = 2.0f * (q[1] * v[2] - q[2] * v[1]);
-    const float ty = 2.0f * (q[2] * v[0] - q[0] * v[2]);
-    const float tz = 2.0f * (q[0] * v[1] - q[1] * v[0]);
-    out[0] = v[0] + q[3] * tx + (q[1] * tz - q[2] * ty);
-    out[1] = v[1] + q[3] * ty + (q[2] * tx - q[0] * tz);
-    out[2] = v[2] + q[3] * tz + (q[0] * ty - q[1] * tx);
-}
-
 // The nock anchor: where the string physically lives on the weapon — the weapon-hand
 // controller plus the user-tuned grip-local offset (cm sliders; right/up/forward in the
 // controller's own frame, forward = -Z as OpenXR defines it). The marker shows this point,
@@ -90,7 +81,7 @@ bool NockAnchorWorld(float* out3) {
                              CVarGetFloat("gVrArcheryAnchorUp", -5.0f) * u,
                              -CVarGetFloat("gVrArcheryAnchorFwd", 17.0f) * u };
     float off[3];
-    QuatRot(rot, local, off);
+    VrCombat::QuatRotate(rot, local, off);
     for (int i = 0; i < 3; i++) {
         out3[i] = pos[i] + off[i];
     }
@@ -780,7 +771,7 @@ extern "C" bool VrArchery_AimSegment(float* outPosDir6) {
         float bp[3], br[4];
         if (VR_GetHandPose(BowHand(), bp, br)) {
             const float local[3] = { 0.0f, 0.0f, -CVarGetFloat("gVrSlingshotLaunchLift", 6.0f) * 0.01f * WorldScale() };
-            QuatRot(br, local, lift);
+            VrCombat::QuatRotate(br, local, lift);
         }
     }
     float dir[3] = { (a[0] - s[0]) / len, (a[1] - s[1]) / len, (a[2] - s[2]) / len };

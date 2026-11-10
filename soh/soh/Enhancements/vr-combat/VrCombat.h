@@ -132,6 +132,20 @@ void VrItemThrow_UpdateCarryPose(struct Player* player);
 bool VrItemThrow_DrawNutModel(struct Actor* actor, struct PlayState* play);
 bool Player_VrGrabItem(struct PlayState* play, struct Player* player);
 void Player_VrReleaseItem(struct PlayState* play, struct Player* player, const float* velocity);
+// Physical lifting of world objects (pots, small crates, small rocks, bushes, bomb flowers) in
+// VR first person with motion hands: squeeze grip with a hand on the object to lift it into that
+// hand, release grip to throw it with the hand's motion. Other liftables keep the vanilla lift.
+bool VrItemThrow_LiftActive(struct Player* player);
+bool VrItemThrow_LiftCarrying(struct Player* player);
+bool VrItemThrow_LiftEngaged(void);
+void VrItemThrow_OfferLift(struct Actor* actor);
+void VrItemThrow_LiftTick(struct PlayState* play, struct Player* player);
+// A in first person: lift into the nearest hand instead of over Link's head. True = handled.
+bool VrItemThrow_LiftWithButton(struct PlayState* play, struct Player* player, struct Actor* actor);
+// Throw the physically lifted object now, with the holding hand's motion.
+void VrItemThrow_LiftThrowNow(struct PlayState* play, struct Player* player);
+bool Player_VrLiftActor(struct PlayState* play, struct Player* player, struct Actor* actor);
+void Player_VrReleaseLifted(struct PlayState* play, struct Player* player, const float* velocity);
 uint16_t VrItemSelect_TriggerItemMask(int32_t vrHand);
 bool VrItemSelect_TriggerConsumed(int32_t vrHand, uint16_t vrBtnMask);
 
