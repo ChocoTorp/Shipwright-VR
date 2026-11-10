@@ -22,6 +22,7 @@
 - Soft resets can no longer glitch the title screen.
 - Bombs, Zelda's Letter and trade items show as 3D.
 - Gauntlet forearm plates no longer float with motion hands.
+- Goron bracelet is worn at the VR wrist with motion hands.
 
 
 ## Controls
@@ -119,6 +120,9 @@ Bombs waiting in front of your chest are now the real 3D bomb, like the Deku Nut
 
 **Gauntlet forearm plates no longer float with motion hands.**
 In first person with motion hands, Link's shoulders and forearms are hidden while his hands follow the controllers. The Silver and Golden Gauntlets' forearm plates are drawn on the animated forearms, not the hidden limbs, so they hung in the air where his body's hands would be. They are now skipped along with the forearms. The plates on the hands still follow the hands.
+
+**Goron bracelet is worn at the VR wrist with motion hands.**
+Child Link's bracelet is skinned to his left forearm, so with motion hands it hung on the hidden arm. It is now drawn at the VR hand that shows Link's left hand (the sword hand), behind the hand at the wrist: every forearm matrix it loads is replaced by the hand pose times the inverse of the wrist joint (position and this frame's rotation), registered as a live child of the hand so it moves at headset rate. Empty hands get the same palm-centered scale as the hand mesh.
 
 ## Controls
 
