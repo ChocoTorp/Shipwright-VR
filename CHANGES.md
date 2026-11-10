@@ -21,6 +21,8 @@
 - Fixed rare black textures caused by stale mipmap state.
 - Soft resets can no longer glitch the title screen.
 - Bombs, Zelda's Letter and trade items show as 3D.
+- Aiming reticles sit on the surface they point at.
+- Hookshot fires straight down its barrel.
 
 
 ## Controls
@@ -115,6 +117,12 @@ The hand and space matrix registries are keyed by memory addresses that the game
 
 **Bombs, Zelda's Letter and trade items show as 3D.**
 Bombs waiting in front of your chest are now the real 3D bomb, like the Deku Nuts. Zelda's Letter, the eggs, the chickens and every trading-sequence item appear as 3D models in your hand. They are welded to the live hand pose, so they turn with your wrist and never trail. When you run out of nuts or bombs, the waiting model turns 30 percent see-through instead of disappearing.
+
+**Aiming reticles sit on the surface they point at.**
+The game's reticle (the hookshot's, and the bow's and slingshot's with the Bow Reticle enhancement) was drawn on the HUD layer, which in the headset is the flat HUD panel, so it floated in front of you instead of marking the wall. In VR it is now drawn in the world at the hit point, in both views. In first person an arrow or seed flies along the motion-aim ray, so its reticle is cast along that same ray from where the projectile sits; the hookshot keeps the game's cast down its barrel.
+
+**Hookshot fires straight down its barrel.**
+The hookshot no longer takes the controller's aim ray, which points a different way than the barrel and turned the hook sideways; the game's own transform already puts the hook at the barrel's tip.
 
 ## Controls
 
