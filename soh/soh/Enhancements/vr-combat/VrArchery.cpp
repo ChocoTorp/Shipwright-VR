@@ -404,8 +404,10 @@ bool SimulateShot(const Player* player, TrajSim& sim) {
         Vec3f hitPos;
         CollisionPoly* poly = NULL;
         s32 bgId = 0;
-        const bool bgHit = BgCheck_EntityLineTest1(&gPlayState->colCtx, &pos, &next, &hitPos, &poly, true, true,
-                                                   true, true, &bgId);
+        // Same test the arrow and seed fly with (EnArrow_Fly): it skips the surfaces marked for
+        // projectiles to pass through, which an entity test would stop on.
+        const bool bgHit =
+            BgCheck_ProjectileLineTest(&gPlayState->colCtx, &pos, &next, &hitPos, &poly, true, true, true, true, &bgId);
         const Vec3f segEnd = bgHit ? hitPos : next;
         // Whatever is nearest wins: an enemy in front of a wall takes the ring.
         Vec3f actorNormal;
